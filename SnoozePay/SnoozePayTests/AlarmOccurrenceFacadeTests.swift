@@ -7,7 +7,6 @@ private typealias Alarm = SnoozePay.Alarm
 
 @MainActor
 final class AlarmOccurrenceFacadeTests: XCTestCase {
-    private var suite: String!
     private var defaults: UserDefaults!
     private var store: AlarmSnoozeSessionStore!
     private var backend: OccurrenceFacadeBackend!
@@ -15,17 +14,11 @@ final class AlarmOccurrenceFacadeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "test.occurrence.facade.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = makeIsolatedDefaults()
         store = AlarmSnoozeSessionStore(defaults: defaults)
         backend = OccurrenceFacadeBackend()
         scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(),
                                    alarmKit: backend, snoozeSessions: store)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
     }
 
     func testValidatedUntrackedTicketPreservesWeeklyClockAndDays() throws {

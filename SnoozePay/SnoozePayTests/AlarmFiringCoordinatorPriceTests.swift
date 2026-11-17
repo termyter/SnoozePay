@@ -6,7 +6,6 @@ import XCTest
 /// resolved tier price elsewhere, nothing at all when the scale is unknown.
 final class AlarmFiringCoordinatorPriceTests: XCTestCase {
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var repository: TransactionRepository!
     private var alarmRepo: AlarmRepository!
@@ -19,8 +18,7 @@ final class AlarmFiringCoordinatorPriceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.coordinatorPrice.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         repository = TransactionRepository(defaults: defaults)
         alarmRepo = AlarmRepository(defaults: defaults)
@@ -39,7 +37,6 @@ final class AlarmFiringCoordinatorPriceTests: XCTestCase {
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         coordinator = nil
         balance = nil
         super.tearDown()

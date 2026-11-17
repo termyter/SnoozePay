@@ -9,20 +9,13 @@ final class WalletCurrencyTests: XCTestCase {
     /// leaked value from a previous test would make the next one pass or fail
     /// for the wrong reason.
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
 
     private let usd = Currency(code: "USD")!
     private let eur = Currency(code: "EUR")!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test_\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
+        testDefaults = makeIsolatedDefaults()
     }
 
     // MARK: - Helpers

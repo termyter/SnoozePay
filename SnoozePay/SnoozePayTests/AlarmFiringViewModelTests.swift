@@ -18,7 +18,7 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     )
 
     /// Every store the view model writes through — wallet, ledger, alarms,
-    /// wake days — lives in this per-test suite, dropped in `tearDown` (#814).
+    /// wake days — lives in a pooled isolated suite, emptied after the test (#814, #1118).
     ///
     /// Until #814 this class drove `BalanceService.shared`, the view model's
     /// default `WakeEventStore.shared` and `AlarmRepository(defaults: .standard)`,
@@ -26,7 +26,6 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     /// the host's real `UserDefaults.standard`: `user_balance`,
     /// `stored_transactions`, `wake_days`, `wake_times`, `stored_alarms`. Every
     /// later test that read one of them inherited whatever this class left.
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var wallet: BalanceService!
     /// Fails the test if it moved the host's real `UserDefaults.standard` (#830).
@@ -35,16 +34,13 @@ final class AlarmFiringViewModelIOS011Tests: XCTestCase {
     override func setUp() {
         super.setUp()
         domainGuard = AppDefaultsDomainGuard()
-        suiteName = "test.firing.vm.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
         wallet = nil
         defaults = nil
-        suiteName = nil
         domainGuard.assertUntouched()
         domainGuard = nil
         super.tearDown()

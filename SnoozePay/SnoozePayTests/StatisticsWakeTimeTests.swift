@@ -15,21 +15,14 @@ import XCTest
 final class StatisticsWakeTimeTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var wakeStore: WakeEventStore!
 
     private let calendar = StatisticsViewModel.mondayFirstCalendar
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.statsWake.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         wakeStore = WakeEventStore(defaults: testDefaults)
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Helpers

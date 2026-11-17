@@ -22,19 +22,12 @@ final class AlarmsListCapsRowTests: XCTestCase {
     }
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
     private var repo: AlarmRepository!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.capsRow.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
         repo = AlarmRepository(defaults: testDefaults, scheduler: NoopScheduler())
-    }
-
-    override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - weekdayPhrase matrix (pure)

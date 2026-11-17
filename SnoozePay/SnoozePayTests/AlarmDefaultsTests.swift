@@ -7,19 +7,12 @@ import XCTest
 final class AlarmDefaultsTests: XCTestCase {
 
     private var defaults: UserDefaults!
-    private var suiteName: String!
     private var sut: AlarmDefaults!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmdefaults.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         sut = AlarmDefaults(defaults: defaults)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Snooze duration
