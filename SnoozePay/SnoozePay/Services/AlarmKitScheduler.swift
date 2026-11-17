@@ -132,6 +132,10 @@ protocol AlarmKitScheduling: AnyObject {
     func verifyFinishedOccurrence(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
     func cleanUpLateSnooze(_ request: AlarmOccurrenceFinishRequest) -> Result<Void, AlarmOccurrenceFinishError>
     func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError>
+    /// Read-only proof that an earlier ring's snooze copy is gone while the original alerts again.
+    func verifySupersededOccurrence(
+        _ request: AlarmOccurrenceFinishRequest
+    ) -> Result<Void, AlarmOccurrenceFinishError>
 }
 
 /// Default derivation for test doubles that only model the yes/no axis: they
@@ -166,6 +170,12 @@ extension AlarmKitScheduling {
     }
 
     func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
+        .failure(.unsupported)
+    }
+
+    func verifySupersededOccurrence(
+        _ request: AlarmOccurrenceFinishRequest
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
         .failure(.unsupported)
     }
 }
@@ -729,6 +739,27 @@ extension AlarmKitScheduler {
         do {
             try stopAlarm(alarmID)
             return .success(())
+        } catch {
+            return .failure(.nativeUnconfirmed)
+        }
+    }
+
+    /// No native operation: any registration under the derived ID is still the
+    /// earlier ring's snooze (or unknown), so its presence always refuses.
+    func verifySupersededOccurrence(
+        _ request: AlarmOccurrenceFinishRequest
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        do {
+            let snapshots = try checkedOccurrenceInventory()
+            try validateDerived(in: [], request: request)
+            let originals = snapshots.filter { $0.id == request.alarmID }
+            guard !snapshots.contains(where: { $0.id == Self.snoozeID(for: request.alarmID) }),
+                  originals.count == 1, originals[0].phase == .alerting else {
+                throw AlarmOccurrenceFinishError.nativeUnconfirmed
+            }
+            return .success(())
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
         } catch {
             return .failure(.nativeUnconfirmed)
         }

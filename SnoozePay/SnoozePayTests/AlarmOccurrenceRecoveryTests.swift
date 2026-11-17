@@ -20,19 +20,19 @@ final class AlarmOccurrenceRecoveryTests: XCTestCase {
         XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty)
     }
 
-    func testExplicitTrackedRetryCommitsOnlyItsTicketAndRecordsCurrentConfirmationOnce() throws {
+    func testExplicitTrackedRetryCommitsOnlyItsTicketAndRecordsItsRingWakeOnce() throws {
         let fixture = try OccurrenceVMFixture()
         defer { fixture.close() }
-        let ticket = try fixture.recoveryTrackedTicket()
-        let confirmation = Date()
-        let service = fixture.recoveryService(now: { confirmation })
+        let requested = Date().addingTimeInterval(-120)
+        let ticket = try fixture.recoveryTrackedTicket(wakeAt: requested)
+        let service = fixture.recoveryService()
         let ledger = try fixture.ledger.fetchAllChecked()
         let balance = fixture.wallet.balance
 
         XCTAssertEqual(service.resume(ticket), .success(.completedNow))
         XCTAssertEqual(fixture.backend.occurrenceVerificationRequests.count, 1)
         XCTAssertEqual(fixture.backend.occurrenceVerificationRequests.first?.alarmID, ticket.alarmID)
-        XCTAssertEqual(fixture.wakes.wakeTimes(), [confirmation])
+        XCTAssertEqual(fixture.wakes.wakeTimes(), [requested])
         XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: ticket.alarmID))
         XCTAssertEqual(fixture.wallet.balance, balance)
         XCTAssertEqual(try fixture.ledger.fetchAllChecked().map(\.id), ledger.map(\.id))
@@ -244,6 +244,55 @@ final class AlarmOccurrenceRecoveryTests: XCTestCase {
         assertNoNativeMutation(fixture)
     }
 
+    func testNextDayRecoveryRecordsTheRingsDayAndInstantNotTheConfirmation() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let calendar = Calendar.current
+        let ring = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026, month: 10, day: 26, hour: 7, minute: 12
+        )))
+        let ticket = try fixture.recoveryTrackedTicket(wakeAt: ring)
+        XCTAssertFalse(calendar.isDate(ring, inSameDayAs: Date()), "Confirmation must land on another day")
+
+        XCTAssertEqual(fixture.recoveryService().resume(ticket), .success(.completedNow))
+
+        XCTAssertEqual(fixture.wakes.wakeTimes(), [ring])
+        let ringDay = try XCTUnwrap(WakeDayIdentity(date: ring, calendar: calendar).canonicalStoredDay)
+        XCTAssertEqual(fixture.wakes.wakeDays(), [ringDay])
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: ticket.alarmID))
+        assertNoNativeMutation(fixture)
+    }
+
+    func testTicketPersistedWithoutWakeInstantCompletesButRecordsNoWake() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let ticket = try fixture.recoveryTrackedTicket(wakeAt: nil)
+        XCTAssertNil(ticket.wakeAt)
+
+        XCTAssertEqual(fixture.recoveryService().resume(ticket), .success(.completedNow))
+
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: ticket.alarmID))
+        XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty)
+        XCTAssertTrue(fixture.wakes.wakeDays().isEmpty)
+        XCTAssertEqual(fixture.backend.occurrenceVerificationRequests.count, 1)
+        assertNoNativeMutation(fixture)
+    }
+
+    func testLegacyTicketBytesWithoutWakeInstantStillDecode() throws {
+        let id = UUID()
+        let alarmID = UUID()
+        let legacy = Data(#"{"id":"\#(id.uuidString)","alarmID":"\#(alarmID.uuidString)"}"#.utf8)
+
+        let ticket = try JSONDecoder().decode(AlarmOccurrenceFinishTicket.self, from: legacy)
+
+        XCTAssertEqual(ticket, AlarmOccurrenceFinishTicket(id: id, alarmID: alarmID, token: nil))
+        XCTAssertNil(ticket.wakeAt)
+        let stamped = AlarmOccurrenceFinishTicket(id: id, alarmID: alarmID, token: nil, wakeAt: Date())
+        XCTAssertEqual(try JSONDecoder().decode(
+            AlarmOccurrenceFinishTicket.self, from: JSONEncoder().encode(stamped)
+        ), stamped)
+    }
+
     private func assertNoNativeMutation(_ fixture: OccurrenceVMFixture) {
         XCTAssertTrue(fixture.backend.occurrenceFinishRequests.isEmpty)
         XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
@@ -257,23 +306,23 @@ final class AlarmOccurrenceRecoveryTests: XCTestCase {
 
 @MainActor
 extension OccurrenceVMFixture {
-    func recoveryTrackedTicket() throws -> AlarmOccurrenceFinishTicket {
+    func recoveryTrackedTicket(
+        wakeAt: Date? = Date(), snoozeFireDate: Date = Date().addingTimeInterval(-60)
+    ) throws -> AlarmOccurrenceFinishTicket {
         let sessions = store()
         let token = try sessions.reserve(alarmID: alarm.id, sessionID: nil, expectedCount: 0)
         XCTAssertNotNil(wallet.chargeWithReceipt(amount: 50, alarmID: alarm.id))
         try sessions.recordCharge(token, alarmID: alarm.id)
         defer { sessions.operationEnded(token) }
         try sessions.complete(token, alarmID: alarm.id, receipt: AlarmSnoozeReceipt(
-            systemID: AlarmKitScheduler.snoozeID(for: alarm.id), fireDate: Date().addingTimeInterval(-60)
+            systemID: AlarmKitScheduler.snoozeID(for: alarm.id), fireDate: snoozeFireDate
         ))
-        return try sessions.beginOccurrenceFinish(alarmID: alarm.id, reference: .token(token))
+        return try sessions.beginOccurrenceFinish(alarmID: alarm.id, reference: .token(token), wakeAt: wakeAt)
     }
 
-    func recoveryService(
-        now: @escaping () -> Date = Date.init, verifier: AlarmOccurrenceRecoveryVerifying? = nil
-    ) -> AlarmOccurrenceRecovery {
+    func recoveryService(verifier: AlarmOccurrenceRecoveryVerifying? = nil) -> AlarmOccurrenceRecovery {
         AlarmOccurrenceRecovery(repository: repository, scheduler: verifier ?? scheduler,
-                                sessions: store(), wakes: wakes, now: now)
+                                sessions: store(), wakes: wakes)
     }
 }
 

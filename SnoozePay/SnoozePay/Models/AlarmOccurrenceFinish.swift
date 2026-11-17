@@ -13,6 +13,18 @@ struct AlarmOccurrenceFinishTicket: Codable, Equatable {
     let id: UUID
     let alarmID: UUID
     let token: AlarmSnoozeToken?
+    /// The moment the user first asked to finish this ring: the wake instant a
+    /// confirmed finish records, however much later confirmation arrives.
+    /// Absent in tickets persisted before it existed (decoded as `nil`); such
+    /// a ticket can still be confirmed, but no wake is invented for it.
+    let wakeAt: Date?
+
+    init(id: UUID, alarmID: UUID, token: AlarmSnoozeToken?, wakeAt: Date? = nil) {
+        self.id = id
+        self.alarmID = alarmID
+        self.token = token
+        self.wakeAt = wakeAt
+    }
 }
 
 /// A projection of a fresh complete native inventory, never the alerting-only stream.

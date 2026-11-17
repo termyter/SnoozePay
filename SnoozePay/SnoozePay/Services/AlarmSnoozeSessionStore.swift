@@ -207,8 +207,9 @@ final class AlarmSnoozeSessionStore {
 
     // MARK: - Scoped occurrence finish
 
+    /// An existing request is resumed as stored, keeping its original `wakeAt`.
     func beginOccurrenceFinish(
-        alarmID: UUID, reference: AlarmSnoozeReference?
+        alarmID: UUID, reference: AlarmSnoozeReference?, wakeAt: Date? = nil
     ) throws -> AlarmOccurrenceFinishTicket {
         var envelope = try readForOccurrenceFinish()
         let token: AlarmSnoozeToken?
@@ -222,7 +223,7 @@ final class AlarmSnoozeSessionStore {
             _ = try finishSession(existing, in: envelope, allowFinished: true)
             return existing
         }
-        let ticket = AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarmID, token: token)
+        let ticket = AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarmID, token: token, wakeAt: wakeAt)
         _ = try finishSession(ticket, in: envelope, allowFinished: false)
         envelope.finishRequests = (envelope.finishRequests ?? []) + [ticket]
         try writeForOccurrenceFinish(envelope)

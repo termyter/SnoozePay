@@ -4412,19 +4412,19 @@
       }
     },
     "firing.finish.recovery.message" : {
-      "comment" : "Explains explicit confirmation-time wake semantics and that quiet retry never stops a new native occurrence.",
+      "comment" : "Explains that a confirmed retry records the wake at the original attempt's time and that quiet retry never stops a new native occurrence.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You can confirm the pending finish after restarting. A successful retry records a wake at the current time. It does not stop a new alarm."
+            "value" : "You can confirm the pending finish after restarting. A successful retry records the wake at the time of the original attempt. It does not stop a new alarm."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "После перезапуска можно повторно подтвердить завершение. При успехе подъём отмечается текущим временем. Новое срабатывание не выключается."
+            "value" : "После перезапуска можно повторно подтвердить завершение. При успехе подъём отмечается временем исходной попытки. Новое срабатывание не выключается."
           }
         }
       }

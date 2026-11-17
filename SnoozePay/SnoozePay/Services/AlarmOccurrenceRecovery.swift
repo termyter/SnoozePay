@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct AlarmOccurrenceRecoveryEntry: Equatable {
     let ticket: AlarmOccurrenceFinishTicket
@@ -40,20 +41,17 @@ final class AlarmOccurrenceRecovery: AlarmOccurrenceRecovering {
     private let scheduler: AlarmOccurrenceRecoveryVerifying
     private let sessions: AlarmSnoozeSessionStore
     private let wakes: WakeEventStore
-    private let now: () -> Date
     private let calendar: Calendar?
     private var completed: [UUID: AlarmOccurrenceFinishTicket] = [:]
 
     init(
         repository: AlarmRepository, scheduler: AlarmOccurrenceRecoveryVerifying,
-        sessions: AlarmSnoozeSessionStore, wakes: WakeEventStore,
-        now: @escaping () -> Date = Date.init, calendar: Calendar? = nil
+        sessions: AlarmSnoozeSessionStore, wakes: WakeEventStore, calendar: Calendar? = nil
     ) {
         self.repository = repository
         self.scheduler = scheduler
         self.sessions = sessions
         self.wakes = wakes
-        self.now = now
         self.calendar = calendar
     }
 
@@ -99,9 +97,15 @@ final class AlarmOccurrenceRecovery: AlarmOccurrenceRecovering {
             }
             try sessions.commitOccurrenceFinish(ticket)
             completed[ticket.id] = ticket
-            // Preserve explicit-success confirmation time. The ticket has no
-            // historical wake instant or billing window to reconstruct.
-            wakes.recordWake(on: now(), calendar: calendar ?? .current)
+            // The wake belongs to the ring the user finished, not to this
+            // confirmation, which can land in the evening or on a later day.
+            // A ticket persisted before `wakeAt` existed has no instant to
+            // reconstruct; skipping beats writing a wrong day row and instant.
+            if let wakeAt = ticket.wakeAt {
+                wakes.recordWake(on: wakeAt, calendar: calendar ?? .current)
+            } else {
+                AppLogger.emit(.ui, .default, "Recovered finish has no wake instant; wake not recorded")
+            }
             return .success(.completedNow)
         } catch let error as AlarmOccurrenceFinishError {
             return .failure(error)

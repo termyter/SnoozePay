@@ -129,7 +129,10 @@ final class AlarmFiringViewModel {
         self.ledger = ledger
         self.firingStartedAt = firingStartedAt
         self.snoozeSessions = snoozeSessions
-        if (try? snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id)) != nil { finishRequested = true }
+        if let pending = try? snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id),
+           !retireSupersededFinish(pending) {
+            finishRequested = true
+        }
     }
 
     // MARK: - Computed properties for UI
@@ -650,9 +653,15 @@ final class AlarmFiringViewModel {
             return .failure(mapped)
         }
         if finishTicket == nil {
+            if let pending = try? snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id) {
+                // A refusal leaves the request in place; `begin` then refuses ownership.
+                _ = retireSupersededFinish(pending)
+            }
+            let requestedAt = Date()
             do {
-                finishTicket = try snoozeSessions?.beginOccurrenceFinish(alarmID: alarm.id, reference: snoozeReference)
-                    ?? AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarm.id, token: nil)
+                finishTicket = try snoozeSessions?.beginOccurrenceFinish(
+                    alarmID: alarm.id, reference: snoozeReference, wakeAt: requestedAt
+                ) ?? AlarmOccurrenceFinishTicket(id: UUID(), alarmID: alarm.id, token: nil, wakeAt: requestedAt)
             } catch {
                 return finishContextFailed(error)
             }
@@ -682,9 +691,24 @@ final class AlarmFiringViewModel {
         }
         do { try snoozeSessions?.commitOccurrenceFinish(ticket) } catch { return finishContextFailed(error) }
         hasBeenDismissed = true
-        wakeStore.recordWake()
+        wakeStore.recordWake(on: ticket.wakeAt ?? Date())
         onStateChanged?()
         return .success(.completedNow)
+    }
+
+    /// A request left by an earlier, snoozed ring (its token) must not hold a
+    /// fresh ring of the original (`nil` reference) hostage. It is retired only
+    /// on native proof that the old snooze copy is gone and the original is
+    /// alerting again; anything less keeps it, and this screen keeps refusing.
+    private func retireSupersededFinish(_ pending: AlarmOccurrenceFinishTicket) -> Bool {
+        guard snoozeReference == nil, pending.token != nil else { return false }
+        switch scheduler.retireSupersededOccurrenceFinish(for: alarm, ticket: pending) {
+        case .success:
+            return true
+        case .failure(let error):
+            AppLogger.emit(.ui, .error, "Earlier ring's finish request kept: \(String(describing: error))")
+            return false
+        }
     }
 
     private func checkedAlarmForFinish() throws -> Alarm? {
@@ -694,7 +718,11 @@ final class AlarmFiringViewModel {
             throw AlarmOccurrenceFinishError.persistenceFailed
         }
         if let current, current.enabled {
-            let changed = !alarm.enabled || current.time != alarm.time || current.repeatMode != alarm.repeatMode
+            // Since #1065 the clock can change while the Date stays put, so the
+            // resolved clock (explicit or legacy projection) is compared too.
+            let changed = !alarm.enabled || current.time != alarm.time
+                || current.resolvedTimeOfDay() != alarm.resolvedTimeOfDay()
+                || current.repeatMode != alarm.repeatMode
                 || Set(current.repeatDays) != Set(alarm.repeatDays)
             guard !changed else { throw AlarmOccurrenceFinishError.ownershipUnavailable }
         }

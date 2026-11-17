@@ -39,6 +39,9 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     private(set) var occurrenceVerificationRequests: [AlarmOccurrenceFinishRequest] = []
     private(set) var lateSnoozeCleanupRequests: [AlarmOccurrenceFinishRequest] = []
     private(set) var finishOriginalStopIDs: [UUID] = []
+    /// Refuses by default: an earlier ring's request is retired only when a test proves it.
+    var supersedeVerificationResult: Result<Void, AlarmOccurrenceFinishError> = .failure(.nativeUnconfirmed)
+    private(set) var supersedeVerificationRequests: [AlarmOccurrenceFinishRequest] = []
 
     init(
         authorization: AlarmKitAuthorization = .authorized,
@@ -99,6 +102,13 @@ final class TestAlarmKitBackend: AlarmKitScheduling {
     func stopOriginalForFinish(_ alarmID: UUID) -> Result<Void, AlarmOccurrenceFinishError> {
         finishOriginalStopIDs.append(alarmID)
         return .success(())
+    }
+
+    func verifySupersededOccurrence(
+        _ request: AlarmOccurrenceFinishRequest
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        supersedeVerificationRequests.append(request)
+        return supersedeVerificationResult
     }
 }
 

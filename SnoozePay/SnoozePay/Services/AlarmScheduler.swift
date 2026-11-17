@@ -784,6 +784,37 @@ extension AlarmScheduler {
         }
     }
 
+    /// Retires a request left by an earlier, snoozed ring once a fresh ring of
+    /// the original is on screen. Native proof is read-only: the old snooze copy
+    /// must be gone and the original alerting again; its confirmed copy must
+    /// already be due. The session is then settled exactly as a confirmed
+    /// finish would settle it. No wake is recorded for the earlier ring.
+    func retireSupersededOccurrenceFinish(
+        for alarm: Alarm, ticket: AlarmOccurrenceFinishTicket, now: Date = Date()
+    ) -> Result<Void, AlarmOccurrenceFinishError> {
+        guard ticket.alarmID == alarm.id, ticket.token != nil else { return .failure(.ownershipUnavailable) }
+        guard legacySnoozeOperations[alarm.id]?.isEmpty != false else { return .failure(.busy) }
+        guard let snoozeSessions else { return .failure(.sessionUnavailable) }
+        do {
+            // Validates the stored request and refuses while a physical callback runs.
+            let request = try occurrenceFinishRequest(for: alarm, ticket: ticket, preserveWeekly: false)
+            if let fireDate = request.expectedDerivedFireDate, fireDate > now {
+                return .failure(.ownershipUnavailable)
+            }
+            guard let alarmKitScheduler else { return .failure(.unsupported) }
+            if case .failure(let error) = alarmKitScheduler.verifySupersededOccurrence(request) {
+                return .failure(error)
+            }
+            try snoozeSessions.commitOccurrenceFinish(ticket)
+            AppLogger.emit(.scheduler, .default, "Retired an earlier ring's finish request for a fresh ring")
+            return .success(())
+        } catch let error as AlarmOccurrenceFinishError {
+            return .failure(error)
+        } catch {
+            return .failure(.sessionUnavailable)
+        }
+    }
+
     /// On unsafe context only the known original may be silenced; this never confirms UI success.
     func stopOriginalAfterUnverifiedFinish(_ alarmID: UUID) {
         guard let alarmKitScheduler else { return }

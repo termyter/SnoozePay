@@ -22,10 +22,11 @@ final class AlarmOccurrenceRecoveryCopyTests: XCTestCase {
         "firing.finish.retry": ("Повторить", "Try Again"),
         "firing.finish.recovery.confirmed": ("Завершение подтверждено", "Finish Confirmed"),
         "firing.finish.recovery.message": (
-            "После перезапуска можно повторно подтвердить завершение. При успехе подъём отмечается текущим временем. "
-                + "Новое срабатывание не выключается.",
+            "После перезапуска можно повторно подтвердить завершение. "
+                + "При успехе подъём отмечается временем исходной попытки. Новое срабатывание не выключается.",
             "You can confirm the pending finish after restarting. "
-                + "A successful retry records a wake at the current time. It does not stop a new alarm."
+                + "A successful retry records the wake at the time of the original attempt. "
+                + "It does not stop a new alarm."
         ),
         "firing.finish.recovery.previous": ("Проверить предыдущую попытку", "Check Previous Finish"),
         "firing.finish.recovery.retry": ("Повторить завершение", "Confirm Pending Finish"),

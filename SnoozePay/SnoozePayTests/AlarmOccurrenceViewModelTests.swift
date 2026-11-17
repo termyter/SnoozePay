@@ -274,6 +274,182 @@ final class AlarmOccurrenceViewModelTests: XCTestCase {
         XCTAssertEqual(WakeEventStore(defaults: fixture.defaults).wakeDays().count, 1)
         XCTAssertEqual(try fixture.ledger().fetchAllChecked().map(\.id), rows.map(\.id))
     }
+
+    // MARK: - #1071 civil clock in the ownership check
+
+    func testStaleExplicitClockWithTheSameDateRefusesBeforeAnyTicketOrNativeCall() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let stale = fixture.alarm.with(clockTime: try XCTUnwrap(TimeOfDay(hour: 7, minute: 0)))
+        let current = fixture.alarm.with(clockTime: try XCTUnwrap(TimeOfDay(hour: 8, minute: 0)))
+        XCTAssertEqual(stale.time, current.time)
+        XCTAssertEqual(stale.repeatDays, current.repeatDays)
+        XCTAssertEqual(stale.repeatMode, current.repeatMode)
+        XCTAssertTrue(fixture.seedRepository.save(current))
+        let model = fixture.model(stale)
+        let sessionBytes = fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key)
+
+        XCTAssertEqual(model.dismiss(), .failure(.ownershipUnavailable))
+
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        XCTAssertEqual(fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key), sessionBytes)
+        assertNoFinishSideEffects(fixture)
+        XCTAssertEqual(try fixture.repository.fetchChecked(id: fixture.alarm.id)?.clockTime, current.clockTime)
+    }
+
+    func testLegacyClockSnapshotRefusesARowThatGainedADifferentExplicitClock() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        XCTAssertNil(fixture.alarm.clockTime, "The fixture row is a legacy Date-only alarm")
+        let current = fixture.alarm.with(clockTime: try XCTUnwrap(TimeOfDay(hour: 8, minute: 0)))
+        XCTAssertEqual(current.time, fixture.alarm.time)
+        XCTAssertTrue(fixture.seedRepository.save(current))
+        let model = fixture.model()
+
+        XCTAssertEqual(model.dismiss(), .failure(.ownershipUnavailable))
+
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        assertNoFinishSideEffects(fixture)
+    }
+
+    func testFreshExplicitClockFinishesAndPreservesTheSelectedWeeklyClock() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let explicit = fixture.alarm.with(clockTime: try XCTUnwrap(TimeOfDay(hour: 7, minute: 0)))
+        XCTAssertTrue(fixture.seedRepository.save(explicit))
+
+        XCTAssertEqual(fixture.model(explicit).dismiss(), .success(.completedNow))
+
+        let request = try XCTUnwrap(fixture.backend.occurrenceFinishRequests.first)
+        XCTAssertEqual(fixture.backend.occurrenceFinishRequests.count, 1)
+        XCTAssertEqual(request.weekly?.hour, 7)
+        XCTAssertEqual(request.weekly?.minute, 0)
+        XCTAssertEqual(request.weekly?.mondayFirstDays, [0, 2])
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        XCTAssertEqual(fixture.wakes.wakeDays().count, 1)
+    }
+
+    // MARK: - An earlier ring's request cannot hold a fresh ring hostage
+
+    func testFreshRingRetiresEarlierRingsTokenRequestAndDismissStopsTheNewRing() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        // Ring N: snoozed, "I'm up", process died before the local commit.
+        let stale = try fixture.recoveryTrackedTicket()
+        let staleToken = try XCTUnwrap(stale.token)
+        fixture.backend.supersedeVerificationResult = .success(())
+
+        // Ring N+1 of the original: no snooze reference.
+        let model = fixture.model()
+
+        XCTAssertFalse(model.finishRequested)
+        XCTAssertNil(model.snoozeReference)
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        let proof = try XCTUnwrap(fixture.backend.supersedeVerificationRequests.first)
+        XCTAssertEqual(fixture.backend.supersedeVerificationRequests.count, 1)
+        XCTAssertEqual(proof.alarmID, fixture.alarm.id)
+        XCTAssertNotNil(proof.expectedDerivedFireDate)
+        XCTAssertFalse(proof.allowsUntrackedDerived)
+        XCTAssertThrowsError(try fixture.store().resolve(staleToken, alarmID: fixture.alarm.id))
+        XCTAssertTrue(fixture.backend.occurrenceFinishRequests.isEmpty)
+        XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty, "The earlier ring's wake is not invented")
+
+        XCTAssertEqual(model.dismiss(), .success(.completedNow))
+
+        let request = try XCTUnwrap(fixture.backend.occurrenceFinishRequests.first)
+        XCTAssertEqual(fixture.backend.occurrenceFinishRequests.count, 1)
+        XCTAssertEqual(request.alarmID, fixture.alarm.id)
+        XCTAssertEqual(request.weekly?.hour, 7)
+        XCTAssertEqual(request.weekly?.minute, 10)
+        XCTAssertEqual(request.weekly?.mondayFirstDays, [0, 2])
+        XCTAssertNil(request.expectedDerivedFireDate)
+        XCTAssertTrue(request.allowsUntrackedDerived)
+        XCTAssertTrue(fixture.backend.finishOriginalStopIDs.isEmpty)
+        XCTAssertNil(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        XCTAssertEqual(fixture.wakes.wakeTimes().count, 1)
+        XCTAssertEqual(fixture.wallet.balance, 150, "Ring N's charge stays; no refund is invented")
+    }
+
+    func testEarlierRingsRequestIsKeptWhenNativeStateCannotProveItsSnoozeCopyGone() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let stale = try fixture.recoveryTrackedTicket()
+        // Default double: the old copy may still be registered or the original is not alerting.
+        let model = fixture.model()
+        let sessionBytes = fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key)
+
+        XCTAssertTrue(model.finishRequested)
+        XCTAssertFalse(model.snooze())
+        XCTAssertEqual(model.dismiss(), .failure(.ownershipUnavailable))
+
+        XCTAssertEqual(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id), stale)
+        XCTAssertEqual(fixture.defaults.data(forKey: AlarmSnoozeSessionStore.key), sessionBytes)
+        XCTAssertEqual(fixture.backend.supersedeVerificationRequests.count, 2)
+        XCTAssertTrue(fixture.backend.occurrenceFinishRequests.isEmpty)
+        XCTAssertTrue(fixture.backend.finishOriginalStopIDs.isEmpty)
+        XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty)
+        XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty)
+        XCTAssertEqual(fixture.wallet.balance, 150)
+    }
+
+    func testEarlierRingsRequestWithAnUndueSnoozeCopyIsKeptWithoutANativeProbe() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let stale = try fixture.recoveryTrackedTicket(snoozeFireDate: Date().addingTimeInterval(600))
+        fixture.backend.supersedeVerificationResult = .success(())
+
+        let model = fixture.model()
+
+        XCTAssertTrue(model.finishRequested)
+        XCTAssertTrue(fixture.backend.supersedeVerificationRequests.isEmpty)
+        XCTAssertEqual(try fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id), stale)
+    }
+
+    func testSnoozeIsAvailableOnTheFreshRingAfterRetiringTheEarlierRequest() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        let stale = try fixture.recoveryTrackedTicket()
+        fixture.backend.supersedeVerificationResult = .success(())
+        let model = fixture.model()
+        XCTAssertFalse(model.finishRequested)
+        XCTAssertTrue(model.canSnooze)
+
+        XCTAssertTrue(model.snooze())
+
+        guard case .token(let token)? = model.snoozeReference else {
+            return XCTFail("A fresh ring's snooze must reserve its own session")
+        }
+        XCTAssertNotEqual(token.sessionID, stale.token?.sessionID)
+    }
+
+    // MARK: - The wake belongs to the request, not to a later confirmation
+
+    func testResumedFinishRecordsTheFirstRequestInstantNotTheLaterConfirmation() throws {
+        let fixture = try OccurrenceVMFixture()
+        defer { fixture.close() }
+        fixture.backend.occurrenceFinishResult = .failure(.nativeUnconfirmed)
+        let before = Date()
+        XCTAssertEqual(fixture.model().dismiss(), .failure(.nativeUnconfirmed))
+        let ticket = try XCTUnwrap(fixture.store().pendingOccurrenceFinish(alarmID: fixture.alarm.id))
+        let requested = try XCTUnwrap(ticket.wakeAt)
+        XCTAssertGreaterThanOrEqual(requested, before)
+
+        fixture.backend.occurrenceFinishResult = .success(())
+        XCTAssertEqual(fixture.model().dismiss(), .success(.completedNow))
+
+        XCTAssertEqual(fixture.wakes.wakeTimes(), [requested])
+    }
+
+    private func assertNoFinishSideEffects(
+        _ fixture: OccurrenceVMFixture, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertTrue(fixture.backend.occurrenceFinishRequests.isEmpty, file: file, line: line)
+        XCTAssertTrue(fixture.backend.finishOriginalStopIDs.isEmpty, file: file, line: line)
+        XCTAssertTrue(fixture.backend.cancelledIDs.isEmpty, file: file, line: line)
+        XCTAssertTrue(fixture.backend.stoppedIDs.isEmpty, file: file, line: line)
+        XCTAssertTrue(fixture.backend.supersedeVerificationRequests.isEmpty, file: file, line: line)
+        XCTAssertTrue(fixture.wakes.wakeTimes().isEmpty, file: file, line: line)
+    }
 }
 
 @MainActor

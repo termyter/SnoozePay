@@ -177,3 +177,17 @@ alarm/session/ledger/wake evidence; backup behavior is not suppressed.
 Refresh can itself present a repository-error alert; quiet recovery rechecks
 the current modal afterward and a regression preserves that alert without
 stacking or dismissing it.
+
+## Review corrections (Gauntlet on 9882f94)
+
+Supersedes the confirmation-time wake and the pending #1071 note above.
+
+- Ownership check also compares `resolvedTimeOfDay()`, so a clock edit with an
+  unchanged Date refuses before any ticket, native read or native call.
+- A fresh ring of the original (`nil` reference) retires a token ticket left by
+  an earlier snoozed ring only on read-only native proof (old snooze copy
+  absent, original alerting, confirmed copy already due); the session settles
+  exactly as a confirmed finish would. Otherwise the request stays and refuses.
+- Tickets carry the first finish request instant (`wakeAt`, optional for old
+  bytes). Confirmed finish and recovery record the wake there; a ticket without
+  it completes without recording a wake.
