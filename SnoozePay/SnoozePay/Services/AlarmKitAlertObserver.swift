@@ -25,10 +25,15 @@ import AlarmKit
 /// dedup + present logic is unit-testable without a live `AlarmManager` (which
 /// needs an iOS-26 device + authorization). The production conformer wraps
 /// `AlarmManager.shared.alarmUpdates`; tests feed a hand-built stream.
+struct AlarmSnoozeObservation {
+    let systemID: UUID
+    let fixedFireDate: Date?
+}
+
 protocol AlertingAlarmStream {
     /// An async stream of the *set* of alarm IDs currently in the alerting
     /// state, re-emitted whenever AlarmKit reports any alarm state change.
-    func alertingAlarmIDs() -> AsyncStream<Set<UUID>>
+    func alertingAlarms() -> AsyncStream<[AlarmSnoozeObservation]>
 }
 
 /// Observes alerting AlarmKit alarms and presents the app's custom firing
@@ -40,15 +45,23 @@ final class AlarmKitAlertObserver {
 
     static let shared = AlarmKitAlertObserver(
         stream: AlarmKitAlertObserver.makeDefaultStream(),
-        onAlerting: { AlarmFiringPresenter.shared.requestPresentation(alarmID: $0) }
+        onAlerting: { AlarmFiringPresenter.shared.requestPresentation(alarmID: $0) },
+        alarmRepository: .shared,
+        snoozeSessions: .shared,
+        onTracked: { AlarmFiringPresenter.shared.requestTrackedPresentation(alarmID: $0, reference: $1) }
     )
 
     private let stream: AlertingAlarmStream?
+    /// Production resolves system snooze IDs against persisted originals.
+    /// Nil is reserved for the framework-free, identity-agnostic dedup tests.
+    private let alarmRepository: AlarmRepository?
     /// Closure invoked with each newly-alerting alarm ID. Injectable so tests
     /// can capture presentations; production presents the firing screen.
     /// `@MainActor` because the only caller (`handle`) is main-actor isolated
     /// and the production closure presents a VC.
     private let onAlerting: @MainActor (UUID) -> Void
+    private let snoozeSessions: AlarmSnoozeSessionStore?
+    private let onTracked: (@MainActor (UUID, AlarmSnoozeReference) -> Void)?
 
     /// Alarm IDs we've already presented for this alerting episode. Cleared as
     /// an alarm leaves the alerting set so a later re-fire of the same alarm
@@ -67,18 +80,30 @@ final class AlarmKitAlertObserver {
     #if DEBUG
     init(
         stream: AlertingAlarmStream?,
-        onAlerting: @escaping @MainActor (UUID) -> Void
+        onAlerting: @escaping @MainActor (UUID) -> Void,
+        alarmRepository: AlarmRepository? = nil,
+        snoozeSessions: AlarmSnoozeSessionStore? = nil,
+        onTracked: (@MainActor (UUID, AlarmSnoozeReference) -> Void)? = nil
     ) {
         self.stream = stream
         self.onAlerting = onAlerting
+        self.alarmRepository = alarmRepository
+        self.snoozeSessions = snoozeSessions
+        self.onTracked = onTracked
     }
     #else
     private init(
         stream: AlertingAlarmStream?,
-        onAlerting: @escaping @MainActor (UUID) -> Void
+        onAlerting: @escaping @MainActor (UUID) -> Void,
+        alarmRepository: AlarmRepository,
+        snoozeSessions: AlarmSnoozeSessionStore?,
+        onTracked: (@MainActor (UUID, AlarmSnoozeReference) -> Void)?
     ) {
         self.stream = stream
         self.onAlerting = onAlerting
+        self.alarmRepository = alarmRepository
+        self.snoozeSessions = snoozeSessions
+        self.onTracked = onTracked
     }
     #endif
 
@@ -101,9 +126,9 @@ final class AlarmKitAlertObserver {
         // The Task inherits this main-actor context, so `handle` (main-actor,
         // synchronous) is called without an actor hop — no `await` needed (#382).
         task = Task { [weak self] in
-            for await alertingIDs in stream.alertingAlarmIDs() {
+            for await observations in stream.alertingAlarms() {
                 guard let self else { return }
-                self.handle(alertingIDs: alertingIDs)
+                self.handle(observations: observations)
             }
         }
     }
@@ -120,6 +145,11 @@ final class AlarmKitAlertObserver {
     /// have stopped alerting so a future re-fire presents again. Internal so
     /// tests can drive it directly with synthetic snapshots.
     func handle(alertingIDs: Set<UUID>) {
+        handle(observations: alertingIDs.map { AlarmSnoozeObservation(systemID: $0, fixedFireDate: nil) })
+    }
+
+    func handle(observations: [AlarmSnoozeObservation]) {
+        let alertingIDs = Set(observations.map(\.systemID))
         // Drop IDs that are no longer alerting so they can re-present later.
         presentedAlertingIDs.formIntersection(alertingIDs)
 
@@ -129,8 +159,41 @@ final class AlarmKitAlertObserver {
             AppLogger.scheduler.notice(
                 "AlarmKit foreground alerting alarm=\(alarmID, privacy: .private) — presenting firing screen"
             )
-            onAlerting(alarmID)
+            let original = repositoryAlarmID(for: alarmID)
+            guard original != alarmID, let snoozeSessions, let onTracked else {
+                onAlerting(original)
+                continue
+            }
+            do {
+                let dates = observations.filter { $0.systemID == alarmID }.compactMap(\.fixedFireDate)
+                guard dates.count == 1, let date = dates.first else { throw AlarmSnoozeContextError.unavailable }
+                let receipt = AlarmSnoozeReceipt(systemID: alarmID, fireDate: date)
+                onTracked(original, .token(try snoozeSessions.token(for: receipt, alarmID: original)))
+            } catch AlarmSnoozeContextError.finished { continue } catch {
+                onTracked(original, .unavailable)
+            }
         }
+    }
+
+    private func repositoryAlarmID(for systemID: UUID) -> UUID {
+        guard let alarmRepository else { return systemID }
+        do {
+            // An actual original ID always takes precedence over an alias.
+            if try alarmRepository.fetchChecked(id: systemID) != nil { return systemID }
+            #if canImport(AlarmKit)
+            // snoozeID XORs a fixed namespace, so applying it again recovers
+            // the original. Only accept the candidate when it is persisted.
+            let originalID = AlarmKitScheduler.snoozeID(for: systemID)
+            if try alarmRepository.fetchChecked(id: originalID) != nil { return originalID }
+            #endif
+        } catch {
+            AppLogger.scheduler.error(
+                "AlarmKit alert identity lookup failed: \(String(describing: error), privacy: .public)"
+            )
+        }
+        // Preserve the presenter's checked missing/corrupt-store path, including
+        // its user-facing corruption warning, rather than silently dropping it.
+        return systemID
     }
 }
 
@@ -140,13 +203,15 @@ final class AlarmKitAlertObserver {
 /// Maps each `[Alarm]` snapshot to the set of ids whose `state == .alerting`.
 @available(iOS 26.0, *)
 private struct AlarmManagerAlertingStream: AlertingAlarmStream {
-    func alertingAlarmIDs() -> AsyncStream<Set<UUID>> {
+    func alertingAlarms() -> AsyncStream<[AlarmSnoozeObservation]> {
         AsyncStream { continuation in
             let task = Task {
                 for await alarms in AlarmManager.shared.alarmUpdates {
-                    let alerting = Set(
-                        alarms.filter { $0.state == .alerting }.map(\.id)
-                    )
+                    let alerting = alarms.filter { $0.state == .alerting }.map { alarm in
+                        let date: Date?
+                        if case .fixed(let fixed)? = alarm.schedule { date = fixed } else { date = nil }
+                        return AlarmSnoozeObservation(systemID: alarm.id, fixedFireDate: date)
+                    }
                     continuation.yield(alerting)
                 }
                 continuation.finish()

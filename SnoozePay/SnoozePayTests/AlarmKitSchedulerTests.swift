@@ -370,6 +370,39 @@ final class AlarmKitSchedulerTests: XCTestCase {
         wait(for: [exp], timeout: 2.0)
     }
 
+    @available(iOS 26.0, *)
+    func testBothConfigurationsBuildThePricedButtonInTheSuppliedWalletCurrency() throws {
+        for code in ["RUB", "USD", "EUR", "JPY", "KWD"] {
+            let currency = try XCTUnwrap(Currency(code: code))
+            for amount in [1.25, 0.001] {
+                let alarm = AppAlarm(penaltyAmount: amount)
+                var copies: [String] = []
+                let build: (AppAlarm, Currency?) -> AlarmPresentation = { source, supplied in
+                    XCTAssertEqual(source.penaltyAmount, amount, "Configuration must preserve the raw amount")
+                    XCTAssertEqual(supplied, currency)
+                    let presentation = AlarmKitScheduler.makePresentation(for: source, currency: supplied)
+                    if let title = presentation.alert.secondaryButton?.text {
+                        copies.append(String(localized: title))
+                    }
+                    return presentation
+                }
+                _ = try AlarmKitScheduler.makeConfiguration(for: alarm, currency: currency, presentation: build)
+                _ = try AlarmKitScheduler.makeSnoozeConfiguration(
+                    for: alarm, fireDate: Date().addingTimeInterval(60), currency: currency, presentation: build
+                )
+                let quote = MoneyFormatter.quotedString(amount, currency: currency) ?? "—"
+                XCTAssertEqual(copies, Array(repeating: "Поспать ещё (−\(quote))", count: 2))
+                XCTAssertEqual(alarm.penaltyAmount, amount)
+            }
+        }
+    }
+
+    @available(iOS 26.0, *)
+    func testPristineWalletPresentationDoesNotBakeInALegacyCurrencyBeforeFirstPurchase() {
+        let presentation = AlarmKitScheduler.makePresentation(for: AppAlarm(penaltyAmount: 50), currency: nil)
+        XCTAssertEqual(presentation.alert.secondaryButton.map { String(localized: $0.text) }, "Поспать ещё")
+    }
+
     // MARK: - Config mapping (iOS 26 only)
 
     func testMakeSchedule_weeklyAlarm_mapsRepeatDaysToWeekdays() throws {

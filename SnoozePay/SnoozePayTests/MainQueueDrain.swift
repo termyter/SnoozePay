@@ -197,3 +197,55 @@ func drainMainQueue(
     }
     return true
 }
+
+/// Async counterpart for async tests and teardown. Suspending the waiter lets
+/// the main actor service the same FIFO probe instead of blocking its own turn.
+/// The deadline, quiet threshold and failure classification match the sync API.
+@MainActor
+func drainMainQueueOutcomeAsync(cap: TimeInterval = 60) async -> MainQueueDrainOutcome {
+    let deadline = Date().addingTimeInterval(cap)
+    var turns = 0
+    var lastProbe: TimeInterval = 0
+    var lastProbeReturned = false
+    while deadline.timeIntervalSinceNow > 0 {
+        let turn = XCTestExpectation(description: "main queue turn")
+        let enqueuedAt = Date()
+        DispatchQueue.main.async { turn.fulfill() }
+        let waiterResult = await XCTWaiter.fulfillment(of: [turn], timeout: deadline.timeIntervalSinceNow)
+        turns += 1
+        lastProbe = Date().timeIntervalSince(enqueuedAt)
+        lastProbeReturned = waiterResult == .completed
+        guard waiterResult == .completed else {
+            guard waiterResult == .timedOut else {
+                return .waitEndedEarly(turns: turns, waiterResult: waiterResult, cap: cap)
+            }
+            return .capExhausted(
+                turns: turns, lastProbe: lastProbe, lastProbeReturned: false, cap: cap
+            )
+        }
+        if lastProbe < mainQueueQuietRoundTrip {
+            return .quiet(turns: turns)
+        }
+    }
+    return .capExhausted(
+        turns: turns, lastProbe: lastProbe, lastProbeReturned: lastProbeReturned, cap: cap
+    )
+}
+
+/// Reports an async drain failure exactly once at its caller, just like the
+/// synchronous API. Async callers must await this instead of blocking the queue.
+@MainActor
+@discardableResult
+func drainMainQueueAsync(
+    cap: TimeInterval = 60,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    reportFailure: @MainActor (String, StaticString, UInt) -> Void = { XCTFail($0, file: $1, line: $2) }
+) async -> Bool {
+    let outcome = await drainMainQueueOutcomeAsync(cap: cap)
+    guard outcome.isQuiet else {
+        reportFailure(outcome.diagnosis, file, line)
+        return false
+    }
+    return true
+}

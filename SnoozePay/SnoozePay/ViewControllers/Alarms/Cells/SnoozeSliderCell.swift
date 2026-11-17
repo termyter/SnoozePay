@@ -18,7 +18,7 @@ final class SnoozeSliderCell: UITableViewCell {
     // MARK: - UI
 
     /// In-card caps caption «Длительность откладывания»
-    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:201` contains "Длительность откладывания").
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:200` contains "Длительность откладывания").
     /// Lives inside the card so the table no longer needs a section header (#278).
     private let captionLabel: UILabel = {
         let label = UILabel()
@@ -35,7 +35,7 @@ final class SnoozeSliderCell: UITableViewCell {
     }()
 
     /// Meta hint «На сколько минут отодвигается звонок»
-    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:202` contains "На сколько минут").
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:201` contains "На сколько минут").
     private let hintLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.snooze.hint")
@@ -153,8 +153,8 @@ final class SnoozeSliderCell: UITableViewCell {
                 constant: AppSpacing.cardHorizontalPadding
             ),
             // Card padding 20pt top and bottom — the canon's `SPCard`
-            // default (`SPComponents.jsx` L38, and `padding={20}` explicitly
-            // on this card in `SPScreensV2.jsx`). Was `sm`/`md` (8/12), which
+            // default (`docs/design/snoozepay-2026-04-27/project/components/SPComponents.jsx:38`,
+            // and `padding={20}` explicitly on this card in `SPScreensV2.jsx`). Was `sm`/`md` (8/12), which
             // put the caps caption hard against the card's own top edge while
             // the neighbouring progressive card sat at a roomy 20.
             captionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),

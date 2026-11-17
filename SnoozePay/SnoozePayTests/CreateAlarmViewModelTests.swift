@@ -38,7 +38,7 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
 
     func testAvailableSounds_hasCorrectCount() {
         let vm = CreateAlarmViewModel(repository: repo)
-        XCTAssertEqual(vm.availableSounds.count, 14)
+        XCTAssertEqual(vm.availableSounds.count, 19)
     }
 
     func testAvailableSounds_allHaveUniqueIDs() {

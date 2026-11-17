@@ -170,7 +170,7 @@ extension AlarmFiringViewController {
     /// every VM state change rechecks) and from the balance observer (so
     /// external top-ups also flip the state).
     func refreshNoBalanceVisibility() {
-        let needsNoBalance = !viewModel.canSnooze
+        let needsNoBalance = viewModel.isProgressionAvailable && !viewModel.canSnooze
         // #398: while the snoozed countdown owns the screen, never surface the
         // no-balance stack — even if a mid-snooze balance notification re-runs
         // this pass with `canSnooze == false`. `exitSnoozedState` re-calls this
@@ -198,9 +198,10 @@ extension AlarmFiringViewController {
         // Hide the normal-state group when the no-balance stack takes over.
         // The progressive chrome (centre-hero indicator pill + ticker) is also
         // hidden so it doesn't float over the no-balance layout.
-        snoozeCTA?.isHidden = needsNoBalance
+        snoozeCTA?.isHidden = needsNoBalance || !viewModel.isProgressionAvailable
         dismissButton.isHidden = needsNoBalance
         progressiveStack?.isHidden = needsNoBalance || !viewModel.isProgressiveActive
+            || !viewModel.isProgressionAvailable
     }
 
     // MARK: - Balance observation
