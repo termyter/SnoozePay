@@ -688,6 +688,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 detail: error.localizedDescription, refundLanded: true, alarmID: alarmID, poster: poster
             )
             // The critical warning includes the cause; do not stack a generic corruption alert.
+        case .priceUnavailable:
+            // Without it the snooze is refused in silence (#1136): the user is
+            // on the lock screen and the alarm will not repeat. Nothing was
+            // charged, so the "refunded" body is the right one, as for #864.
+            AppDelegate.postSnoozeScheduleFailedBanner(
+                detail: Localized.text("alarm_failure.snooze.price_unavailable"),
+                refundLanded: true, alarmID: alarmID, poster: poster
+            )
         default:
             break
         }
@@ -714,6 +722,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         case let .priceUnavailable(currency):
             AppLogger.appDelegate.error(
                 "SNOOZE_ACTION: no snooze price in \(currency.code, privacy: .public) — snooze skipped, nothing charged"
+            )
+        case let .currencyMismatch(price, wallet):
+            AppLogger.emit(
+                .appDelegate, .default,
+                "SNOOZE_ACTION: price in \(price.code), wallet in \(wallet.code) — snooze skipped, nothing charged"
             )
         case let .scheduled(newSnoozeCount, charged):
             AppLogger.emit(

@@ -454,7 +454,8 @@ final class AlarmFiringViewModel {
     func snooze(
         scheduleCompletion: ((SnoozeScheduleOutcome) -> Void)? = nil
     ) -> Bool {
-        guard !finishRequested, !hasBeenDismissed, !isSnoozeScheduling, canSnooze else { return false }
+        guard !finishRequested, !hasBeenDismissed, !isSnoozeScheduling, canSnooze,
+              let priceCurrency = nextChargeCurrency() else { return false }
         isSnoozeScheduling = true
 
         // Capture the penalty for this snooze BEFORE bumping the count so the
@@ -484,10 +485,10 @@ final class AlarmFiringViewModel {
         // but the original charge still inflates snooze stats / streak, the
         // exact bug #133 fixed for the notification-action path only.
         // In the locked price's currency (#1143): `canSnooze` saw it payable,
-        // the wallet re-checks under its queue. Unresolved → `.nan`, refused.
+        // the wallet re-checks under its queue.
         guard let chargeTransaction = balanceService.chargeWithReceipt(
             amount: penalty,
-            expecting: price(forSnoozeCount: snoozeCount + 1)?.currency ?? walletCurrency,
+            expecting: priceCurrency,
             alarmID: alarm.id
         ) else {
             if let token {

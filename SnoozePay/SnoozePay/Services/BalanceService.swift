@@ -164,7 +164,7 @@ final class BalanceService {
     /// priced in a known currency goes through
     /// `chargeWithReceipt(amount:expecting:alarmID:)` instead (#1143).
     func chargeWithReceipt(amount: Double, alarmID: UUID?) -> Transaction? {
-        debit(amount: amount, expecting: nil, alarmID: alarmID)
+        try? debit(amount: amount, expecting: nil, alarmID: alarmID).get()
     }
 
     /// Charge of an amount priced in `currency` (#1143): `nil` — no ledger row,
@@ -175,27 +175,46 @@ final class BalanceService {
     /// first purchase freezes and credits another currency, and a number priced
     /// in roubles would then be debited as dollars.
     func chargeWithReceipt(amount: Double, expecting currency: Currency, alarmID: UUID?) -> Transaction? {
-        debit(amount: amount, expecting: currency, alarmID: alarmID)
+        try? debit(amount: amount, expecting: currency, alarmID: alarmID).get()
     }
 
-    private func debit(amount: Double, expecting expected: Currency?, alarmID: UUID?) -> Transaction? {
+    /// Why a debit did not land (#1136). Decided inside the serial queue, so a
+    /// caller reports this reason instead of re-deriving one from its own read.
+    enum DebitRefusal: Error, Equatable {
+        /// Non-finite or non-positive amount (#441).
+        case invalidAmount
+        /// Priced in `price` while the wallet holds `wallet`; there is no conversion.
+        case currencyMismatch(price: Currency, wallet: Currency)
+        /// The stored balance is negative (#119).
+        case balanceCorrupted
+        case insufficientFunds
+        /// The ledger refused the row: locked store, encoding, or a replay (#483).
+        case notRecorded
+    }
+
+    /// The one debit every charge entry point goes through (#1136). `expected`
+    /// is the currency the amount is priced in; `nil` only for the unpriced
+    /// legacy `chargeWithReceipt(amount:alarmID:)`, which debits wallet units.
+    func debit(amount: Double, expecting expected: Currency?, alarmID: UUID?) -> Result<Transaction, DebitRefusal> {
         // Reject non-finite / non-positive amounts up front, matching
         // `creditPromotion`'s contract (#441). Without this a negative amount
         // passes the `current >= amount` guard and records a `.charge` that
         // INCREASES the balance (and injects a phantom snooze day into
         // streak/stats); a NaN would persist into storage before the read-time
         // corruption guard catches it.
-        guard amount.isFinite, amount > 0 else { return nil }
-        let result: (charged: Transaction?, newBalance: Double) = queue.sync {
+        guard amount.isFinite, amount > 0 else { return .failure(.invalidAmount) }
+        let result: (outcome: Result<Transaction, DebitRefusal>, newBalance: Double) = queue.sync {
             let current = readRawBalance()
             // Read once: the comparison and the stamp see the same currency.
+            // Enough on its own: a freeze to another currency needs a pristine
+            // wallet, and the credit that follows it runs through this queue.
             let held = walletCurrency
             if let expected, expected != held {
                 AppLogger.emit(.balance, .error, "charge refused: priced in \(expected.code), wallet in \(held.code)")
-                return (nil, current)
+                return (.failure(.currencyMismatch(price: expected, wallet: held)), current)
             }
-            guard !_balanceCorrupted else { return (nil, current) }
-            guard MoneyDecimal.covers(current, amount) else { return (nil, current) }
+            guard !_balanceCorrupted else { return (.failure(.balanceCorrupted), current) }
+            guard MoneyDecimal.covers(current, amount) else { return (.failure(.insufficientFunds), current) }
 
             // The ledger append IS the mutation (#483). If the store is locked
             // (corrupt blob waiting on user ack), encoding fails, or the row is
@@ -204,18 +223,17 @@ final class BalanceService {
             // stats (see #72 hunter review of PR #101).
             let transaction = Transaction(type: .charge, amount: amount, currency: held, alarmID: alarmID?.uuidString)
             guard ledgerStore.append(transaction) == .recorded else {
-                return (nil, current)
+                return (.failure(.notRecorded), current)
             }
 
             // Recompute from the ledger rather than `current - amount`: the sum
             // over the rows is the balance, and this call also refreshes the
             // `user_balance` cache.
-            return (transaction, readRawBalance())
+            return (.success(transaction), readRawBalance())
         }
 
-        guard let transaction = result.charged else { return nil }
-        notifyBalanceChanged(result.newBalance)
-        return transaction
+        if case .success = result.outcome { notifyBalanceChanged(result.newBalance) }
+        return result.outcome
     }
 
     // MARK: - Top up (IAP)
@@ -543,10 +561,10 @@ final class BalanceService {
     /// matching the legacy `charge(amount:alarmID:)` contract — or when the
     /// amount is in a currency this wallet does not hold, since there is no
     /// conversion (#559) and debiting the number alone would be plain wrong.
+    /// Compared inside the wallet queue by `debit`, not here (#1136).
     @discardableResult
     func charge(_ amount: Money, alarmID: UUID?) -> Bool {
-        guard amount.currency == walletCurrency else { return false }
-        return charge(amount: amount.toDouble(), alarmID: alarmID)
+        chargeWithReceipt(amount: amount.toDouble(), expecting: amount.currency, alarmID: alarmID) != nil
     }
 
     /// Money-typed top-up. The `Money` invariant guarantees non-negative,

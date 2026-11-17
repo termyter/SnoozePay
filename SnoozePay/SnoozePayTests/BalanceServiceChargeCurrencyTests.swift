@@ -72,6 +72,62 @@ final class BalanceServiceChargeCurrencyTests: XCTestCase {
         XCTAssertEqual(wallet.balance, 1)
     }
 
+    /// #1136: every priced debit entry point refuses a rouble amount on a dollar
+    /// wallet THROUGH `debit` — its `.error` line is the proof. A caller-side
+    /// comparison (what `charge(_: Money)` did) refuses without that line.
+    func testEveryPricedEntryPoint_refusesAForeignCurrencyInsideDebit() throws {
+        XCTAssertEqual(wallet.topUpFromPurchase(amount: 100, currency: usd), .credited)
+        let rowsBefore = rows.map(\.id)
+        let roubles = try XCTUnwrap(Money(50, currency: .rub))
+        let entryPoints: [(String, () -> Bool)] = [
+            ("charge(_: Money)", { self.wallet.charge(roubles, alarmID: nil) }),
+            ("chargeWithReceipt(expecting:)", {
+                self.wallet.chargeWithReceipt(amount: 50, expecting: .rub, alarmID: nil) != nil
+            }),
+            ("debit", { (try? self.wallet.debit(amount: 50, expecting: .rub, alarmID: nil).get()) != nil })
+        ]
+
+        for (name, charge) in entryPoints {
+            var errors: [String] = []
+            let charged = AppLogger.withTestSink({ category, level, message in
+                if category == .balance, level == .error { errors.append(message) }
+            }, perform: charge)
+
+            XCTAssertFalse(charged, name)
+            XCTAssertEqual(errors, ["charge refused: priced in RUB, wallet in USD"], name)
+            XCTAssertEqual(rows.map(\.id), rowsBefore, "\(name): no ledger row")
+            XCTAssertEqual(wallet.balance, 100, name)
+        }
+    }
+
+    func testMoneyCharge_inTheWalletsCurrency_debitsStampedInIt() throws {
+        XCTAssertEqual(wallet.topUpFromPurchase(amount: 10, currency: usd), .credited)
+
+        XCTAssertTrue(wallet.charge(try XCTUnwrap(Money(Decimal(string: "1.99")!, currency: usd)), alarmID: nil))
+
+        XCTAssertEqual(rows.filter { $0.type == .charge }.map(\.currency), [usd])
+        XCTAssertEqual(wallet.balance, 8.01)
+    }
+
+    /// The reason comes from `debit`, decided under the queue (#1136).
+    func testDebit_namesItsRefusal() {
+        XCTAssertEqual(wallet.topUpFromPurchase(amount: 1, currency: usd), .credited)
+
+        XCTAssertEqual(refusal(amount: 1, .rub), .currencyMismatch(price: .rub, wallet: usd))
+        XCTAssertEqual(refusal(amount: 1.01, usd), .insufficientFunds)
+        XCTAssertEqual(refusal(amount: .nan, usd), .invalidAmount)
+        XCTAssertEqual(refusal(amount: 0, usd), .invalidAmount)
+        XCTAssertNil(refusal(amount: 1, usd), "a covered charge in the wallet's currency lands")
+        XCTAssertEqual(wallet.balance, 0)
+    }
+
+    private func refusal(amount: Double, _ currency: Currency) -> BalanceService.DebitRefusal? {
+        if case .failure(let refusal) = wallet.debit(amount: amount, expecting: currency, alarmID: nil) {
+            return refusal
+        }
+        return nil
+    }
+
     /// The checked call keeps every refusal of the unchecked one.
     func testExpectedCurrency_stillRefusesInsufficientAndInvalidAmounts() {
         XCTAssertEqual(wallet.topUpFromPurchase(amount: 1, currency: usd), .credited)

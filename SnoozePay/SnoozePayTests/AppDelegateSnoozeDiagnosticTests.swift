@@ -34,6 +34,14 @@ final class AppDelegateSnoozeDiagnosticTests: XCTestCase {
         )
     }
 
+    /// #1136: its own line, not "insufficient funds".
+    func testCurrencyMismatch_actualHandlerNamesBothCurrenciesWithoutPostingABanner() throws {
+        try assertOutcome(
+            .currencyMismatch(price: Currency(code: "USD")!, wallet: .rub), level: .default,
+            message: "SNOOZE_ACTION: price in USD, wallet in RUB — snooze skipped, nothing charged"
+        )
+    }
+
     func testScheduled_actualHandlerReportsItsPublicCountAndChargeWithoutPostingABanner() throws {
         try assertOutcome(
             .scheduled(newSnoozeCount: 3, charged: 2.5), level: .info,

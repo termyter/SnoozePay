@@ -186,6 +186,31 @@ final class AppBannerPostingTests: XCTestCase {
         )
     }
 
+    /// #1136: a snooze refused for an unresolvable price is no longer silent.
+    /// It posts the lost-snooze banner with the "nothing charged" body and
+    /// records no critical warning — the wallet is intact.
+    func testPriceUnavailableOutcome_postsTheSnoozeBannerSayingToOpenTheApp() throws {
+        let alarmID = UUID()
+        let delegate = AppDelegate()
+        delegate.criticalWarnings = CriticalWarningCenter(defaults: makeIsolatedDefaults())
+        delegate.criticalWarnings.isForegroundActive = { false }
+
+        let request = try postedRequest {
+            delegate.handleSnoozeOutcome(
+                .priceUnavailable(currency: Currency(code: "USD")!), alarmID: alarmID, poster: $0
+            )
+        }
+
+        XCTAssertEqual(AppBannerNotification(identifier: request.identifier), .snoozeScheduleFailed)
+        XCTAssertEqual(request.content.title, "Откладывание не запланировано")
+        XCTAssertEqual(
+            request.content.body,
+            "Установите запасной — цена откладывания ещё не загрузилась. Откройте SnoozePay."
+        )
+        try assertSharedShape(request)
+        XCTAssertTrue(delegate.criticalWarnings.pending.isEmpty)
+    }
+
     /// Two postings of one banner are two notifications, not one replacing the
     /// other: the center treats a repeated identifier as an update.
     func testEachPostingMintsAFreshIdentifier() throws {

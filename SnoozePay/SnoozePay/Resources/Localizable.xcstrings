@@ -163,6 +163,24 @@
         }
       }
     },
+    "alarm_failure.snooze.price_unavailable" : {
+      "comment" : "Detail line of the lost-snooze banner when the snooze price could not be resolved in the wallet's currency (store prices not loaded). Nothing was charged. Appended after «Set a backup alarm — ».",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "the snooze fee hasn’t loaded yet. Open SnoozePay."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "цена откладывания ещё не загрузилась. Откройте SnoozePay."
+          }
+        }
+      }
+    },
     "alarm_failure.snooze.title" : {
       "comment" : "Title of the time-sensitive banner AppDelegate posts when a snooze could not be scheduled from a notification action, with no firing screen on hand. Byte-identical to firing.alert.snooze_not_scheduled.title and deliberately a separate entry: that one titles an in-app alert on the firing screen, this one a system banner delivered to a user who may not be looking.",
       "extractionState" : "manual",

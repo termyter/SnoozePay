@@ -129,6 +129,17 @@ extension AlarmFiringViewModel {
         return true
     }
 
+    /// The currency `snooze()` tells the wallet the next charge is priced in, or
+    /// `nil` to refuse (#1136). Never the wallet's own currency as a fallback:
+    /// that would switch the wallet's in-queue check off. `canSnooze` normally
+    /// refuses first; this is the guard for a price that still does not resolve.
+    func nextChargeCurrency() -> Currency? {
+        if let currency = price(forSnoozeCount: snoozeCount + 1)?.currency { return currency }
+        let alarmID = alarm.id
+        AppLogger.ui.error("firing: snooze price unresolved alarm=\(alarmID, privacy: .private) — no charge")
+        return nil
+    }
+
     /// The next snooze's charge; `.nan` while progression is unavailable.
     var currentPenalty: Double {
         guard isProgressionAvailable else { return .nan }
