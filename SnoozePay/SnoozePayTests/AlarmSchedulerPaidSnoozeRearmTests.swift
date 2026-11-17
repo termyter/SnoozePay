@@ -85,6 +85,11 @@ final class AlarmSchedulerPaidSnoozeRearmTests: XCTestCase {
         assertNotificationRearm(UIApplication.significantTimeChangeNotification)
     }
 
+    /// #1126: a new storefront price scale is observed and re-arms like a currency freeze.
+    func testPriceScaleChangeRearmPreservesAlertingOriginalAndPaidDeadline() {
+        assertNotificationRearm(SnoozePriceScaleStore.snoozePriceScaleChangedNotification)
+    }
+
     func testForegroundRearmCountsOnlyFailedFutureOriginal() {
         assertNotificationRearm(UIApplication.didBecomeActiveNotification, rejectFuture: true)
     }

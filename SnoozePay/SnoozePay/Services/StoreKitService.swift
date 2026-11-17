@@ -125,9 +125,13 @@ final class StoreKitService {
     /// `.standard`; production uses `.standard`.
     private let defaults: UserDefaults
 
+    /// Where the storefront snooze-price scale is cached (#1126).
+    private let priceScaleStore: SnoozePriceScaleStore
+
     private init() {
         self.notificationPoster = UNUserNotificationCenter.current()
         self.defaults = .standard
+        self.priceScaleStore = .shared
         transactionListener = Self.makeTransactionListener()
         // Fetch the StoreKit catalogue at startup. Without this the `products`
         // array stays empty for the whole session and every top-up path falls
@@ -144,10 +148,12 @@ final class StoreKitService {
     init(
         notificationPoster: LocalNotificationPosting,
         defaults: UserDefaults = .standard,
+        priceScaleStore: SnoozePriceScaleStore? = nil,
         startListener: Bool = false
     ) {
         self.notificationPoster = notificationPoster
         self.defaults = defaults
+        self.priceScaleStore = priceScaleStore ?? SnoozePriceScaleStore(defaults: defaults)
         if startListener {
             transactionListener = Self.makeTransactionListener()
         }
@@ -238,6 +244,7 @@ final class StoreKitService {
             AppLogger.storeKit.notice(
                 "loaded \(loaded.count)/\(StoreKitService.productIDs.count) products; missing: \(missing.joined(separator: ", "), privacy: .public)"
             )
+            recordPriceScale(from: products)
             postProductsLoaded(products)
         } catch {
             AppLogger.storeKit.error("product load failed: \(error.localizedDescription, privacy: .public)")
@@ -248,6 +255,11 @@ final class StoreKitService {
     // MARK: - Purchase
 
     func purchase(_ product: Product) async {
+        // Before the credit and the wallet-currency freeze, so a full catalogue
+        // has its scale stored by the time the wallet freezes (#1126). A partial
+        // catalogue records nothing and the purchase still goes through, so later
+        // steps must treat a missing scale as an expected state, not a bug.
+        recordPriceScale(from: products)
         do {
             let result = try await product.purchase()
             try await handlePurchaseResult(result)
@@ -619,5 +631,73 @@ final class StoreKitService {
 
     enum StoreError: Error {
         case failedVerification
+    }
+}
+
+// MARK: - Snooze price scale (#1126)
+
+extension StoreKitService {
+
+    /// The scale a catalogue may record, or `nil` when it must record nothing
+    /// (the previously stored scale then stays):
+    /// - the DEBUG demo / forced-empty catalogue never stands for a real storefront;
+    /// - a partial catalogue is a money bug, not an edge case: without the
+    ///   cheapest pack every tier shifts up and snoozes cost more. Only a
+    ///   catalogue holding every `productIDs` entry exactly once records.
+    static func scaleToRecord(from offers: [TopUpOffer], isDemo: Bool) -> SnoozePriceScale? {
+        guard !isDemo else { return nil }
+        let loaded = offers.map(\.productID)
+        guard loaded.count == productIDs.count, Set(loaded) == Set(productIDs) else {
+            AppLogger.storeKit.notice(
+                """
+                snooze price scale not recorded: catalogue has \(loaded.count, privacy: .public) \
+                offers (\(Set(loaded).count, privacy: .public) distinct), \
+                expected all \(productIDs.count, privacy: .public)
+                """
+            )
+            return nil
+        }
+        guard let scale = SnoozePriceScale(offers: offers) else {
+            let currencies = Set(offers.map(\.currency.code)).sorted().joined(separator: ",")
+            let distinctPrices = Set(offers.map(\.price)).count
+            AppLogger.storeKit.error(
+                """
+                snooze price scale not recorded: full catalogue has currencies \
+                [\(currencies, privacy: .public)] and \(distinctPrices, privacy: .public) distinct prices \
+                (needs one currency and \(SnoozePriceScale.tierCount, privacy: .public))
+                """
+            )
+            return nil
+        }
+        return scale
+    }
+
+    fileprivate var isDemoCatalog: Bool {
+        #if DEBUG
+        return Self.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments)
+        #else
+        return false
+        #endif
+    }
+
+    /// Records the scale of the loaded products. A product that does not convert
+    /// to an offer voids the whole catalogue: dropping it could shift every tier.
+    /// The purchase path passes the loaded catalogue, never just the bought
+    /// product, so a partial catalogue there records nothing too.
+    func recordPriceScale(from products: [Product]) {
+        let offers = products.compactMap(TopUpOffer.init(product:))
+        guard offers.count == products.count else {
+            let converted = Set(offers.map(\.productID))
+            let failed = products.map(\.id).filter { !converted.contains($0) }.joined(separator: ", ")
+            AppLogger.storeKit.error(
+                """
+                snooze price scale not recorded: \(products.count - offers.count, privacy: .public) of \
+                \(products.count, privacy: .public) products are not valid offers: \(failed, privacy: .public)
+                """
+            )
+            return
+        }
+        guard let scale = Self.scaleToRecord(from: offers, isDemo: isDemoCatalog) else { return }
+        _ = priceScaleStore.record(scale)
     }
 }
