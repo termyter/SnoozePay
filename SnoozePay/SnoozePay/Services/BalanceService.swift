@@ -45,6 +45,10 @@ final class BalanceService {
     /// paid top-up, then fixed (#563). Deliberately free of `queue.sync`: it is
     /// read from inside the serial queue while stamping ledger rows.
     private let currencyStore: WalletCurrencyStore
+    /// Cached storefront snooze-price scales (#1109). Read by `priceContext`
+    /// (`BalanceService+PriceContext.swift`); a lock-guarded UserDefaults read,
+    /// never StoreKit.
+    let priceScaleStore: SnoozePriceScaleStore
     /// Source of truth for the balance (#483): every mutation is an append
     /// here, and `user_balance` is a cache of `openingBalance + Σ(ledger)`.
     private let ledgerStore: BalanceLedgerStore
@@ -87,11 +91,14 @@ final class BalanceService {
     init(
         defaults: UserDefaults,
         transactionRepository: TransactionRepository,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        priceScaleStore: SnoozePriceScaleStore? = nil
     ) {
         self.defaults = defaults
         self.transactionRepository = transactionRepository
         self.currencyStore = WalletCurrencyStore(defaults: defaults)
+        // Same suite as the wallet unless injected, so a test never reads `.standard`.
+        self.priceScaleStore = priceScaleStore ?? SnoozePriceScaleStore(defaults: defaults)
         self.ledgerStore = BalanceLedgerStoreFactory.makeStore(
             repository: transactionRepository,
             defaults: defaults
@@ -124,7 +131,8 @@ final class BalanceService {
         self.init(
             defaults: .standard,
             transactionRepository: .shared,
-            notificationCenter: .default
+            notificationCenter: .default,
+            priceScaleStore: .shared
         )
     }
 
@@ -377,6 +385,10 @@ final class BalanceService {
     /// it), so it must stay free of `queue.sync` — a `defaults` read is fine,
     /// calling back into `balance` would deadlock.
     var walletCurrency: Currency { currencyStore.currency }
+
+    /// The established wallet currency, or `nil` before the first paid top-up.
+    /// Free of `queue.sync`, like `walletCurrency`.
+    var storedWalletCurrency: Currency? { currencyStore.storedCurrency }
 
     /// A pristine wallet may still adopt a foreign currency. Do not persist a
     /// RUB quote into an alert that could be ringing during its first purchase.
