@@ -146,9 +146,16 @@ extension CreateAlarmViewController {
 
     func makePenaltyCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: PenaltyCell.reuseID, for: indexPath)
-        if let cell = cell as? PenaltyCell {
+        guard let cell = cell as? PenaltyCell else { return cell }
+        if viewModel.offersAmountEntry {
             cell.configure(amount: viewModel.penaltyAmount, currency: viewModel.walletCurrency)
             cell.onValueChanged = { [weak self] amount in self?.setPenaltyAmount(amount) }
+        } else {
+            // Outside roubles (#1146): the scale's tiers, or disabled «—» chips
+            // while the scale is unknown.
+            let titles = viewModel.tierPrices.map { MoneyFormatter.string($0.amount, currency: $0.currency) }
+            cell.configureTiers(titles: titles, selected: viewModel.selectedTier)
+            cell.onTierSelected = { [weak self] tier in self?.setPenaltyTier(tier) }
         }
         return cell
     }
@@ -159,7 +166,7 @@ extension CreateAlarmViewController {
     ) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: ProgressiveScaleCell.reuseID, for: indexPath)
         if let cell = cell as? ProgressiveScaleCell {
-            let currency = viewModel.walletCurrency
+            let currency = viewModel.priceCurrency
             cell.configure(
                 isOn: viewModel.progressiveScale, chain: viewModel.progressiveChain, currency: currency,
                 accessibilityChain: viewModel.progressiveScalePreview(currency: currency)
