@@ -318,7 +318,11 @@ final class AlarmFiringViewModel {
             return Localized.format(
                 "firing.snooze.button.affordable",
                 alarm.snoozeMinutes,
-                MoneyFormatter.string(currentPenalty)
+                // Roubles keep the legacy whole-rouble text; any other price
+                // is quoted in its own currency, never with a hard-coded ₽.
+                priceCurrency == .rub
+                    ? MoneyFormatter.string(currentPenalty)
+                    : (priceText(forSnoozeCount: snoozeCount + 1) ?? "—")
             )
         } else {
             return Localized.text("firing.snooze.button.no_balance")

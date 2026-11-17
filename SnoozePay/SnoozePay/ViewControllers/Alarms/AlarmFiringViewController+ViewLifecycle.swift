@@ -131,7 +131,8 @@ extension AlarmFiringViewController {
         // Recommend an actual compatible offer for the next progressive charge.
         // The sheet reads its live wallet; package copy makes no snooze forecasts.
         let sheet = FiringTopUpBottomSheetViewController(
-            snoozePrice: viewModel.currentPenalty
+            snoozePrice: viewModel.currentPenalty,
+            snoozePriceCurrency: viewModel.priceCurrency
         )
         present(sheet, animated: true)
     }

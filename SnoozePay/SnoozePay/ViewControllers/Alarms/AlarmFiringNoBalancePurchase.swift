@@ -39,16 +39,21 @@ final class AlarmFiringNoBalancePurchase {
     /// The pack the direct CTA quotes and buys: the one the amount sheet opens on
     /// for the same wallet and next charge (#652), never a fixed SKU, chosen
     /// from the same rows the sheet would offer (#1112).
+    ///
+    /// Sufficiency is reckoned in the locked price's currency (#1142): a
+    /// pristine wallet on a dollar storefront picks the minimal dollar pack. A
+    /// price the wallet cannot hold never reaches here (it is stranded).
     var offer: TopUpOffer? {
         guard let model = controller?.viewModel else { return nil }
+        let currency = model.priceCurrency
         let rows = FiringTopUpBottomSheetViewController.offeredPresets(
             offer: offer(for:), balance: model.balance, price: model.currentPenalty,
-            walletCurrency: model.walletCurrency, acceptsPurchase: model.acceptsPurchase(in:)
+            walletCurrency: currency, acceptsPurchase: model.acceptsPurchase(in:)
         )
         let offers = rows.compactMap { offer(for: $0.productID) }
         return FiringTopUpCopy.preselectedOffer(
             offers: offers, balance: model.balance, price: model.currentPenalty,
-            walletCurrency: model.walletCurrency, acceptsPurchase: model.acceptsPurchase(in:)
+            walletCurrency: currency, acceptsPurchase: model.acceptsPurchase(in:)
         )
     }
 

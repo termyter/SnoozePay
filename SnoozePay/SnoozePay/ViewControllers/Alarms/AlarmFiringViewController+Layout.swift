@@ -31,7 +31,7 @@ extension AlarmFiringViewController {
         // button colour.
         let snooze = SPSnoozePrice(
             price: viewModel.currentPenalty,
-            currency: viewModel.walletCurrency,
+            currency: viewModel.priceCurrency,
             minutes: viewModel.alarm.snoozeMinutes,
             tone: .warn,
             hint: snoozeHintText()
