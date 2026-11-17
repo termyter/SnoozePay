@@ -11,15 +11,16 @@ import UIKit
 ///      mono-spaced personal code + a «Копировать» `SPButton(.money, .sm)`
 ///      that copies the code onto the pasteboard.
 ///   3. «Код друга» — caps caption + `SPCard(.surface)` with a vanilla
-///      mono-font `UITextField` placeholder and an «Применить»
-///      `SPButton(.money, .sm)` that briefly flashes a success state.
+///      mono-font `UITextField` and an «Применить» `SPButton(.money, .sm)`
+///      that redeems the code through `ReferralService` (#1088).
 ///   4. «Друзья» — caps caption + `SPCard(.surface)` listing three sample
 ///      friend rows (avatar + name + status meta + trailing amount).
 ///   5. Bottom primary CTA — `SPButton(.money, .lg, fullWidth: true)`
 ///      «Поделиться кодом» that pops a `UIActivityViewController`.
 ///
-/// The personal code comes from the existing local referral identity. Friend
-/// rows and the apply confirmation remain placeholders until a backend exists.
+/// The personal code and the friend-code apply both go through the local
+/// `ReferralService`, the same one behind the Settings section. Friend rows
+/// remain placeholders until a backend exists.
 final class ReferralViewController: UIViewController {
 
     // MARK: - Dependencies
@@ -30,8 +31,14 @@ final class ReferralViewController: UIViewController {
     }
 
     typealias PopoverConfigurationObserver = @MainActor (PopoverConfigurationStep) -> Void
+    /// Redeems a raw friend code; returns the credited amount or throws
+    /// `ReferralService.ApplyError`.
+    typealias FriendCodeApplier = (String) throws -> Double
 
     private let personalCodeProvider: () -> String
+    private let friendCodeApplier: FriendCodeApplier
+    private let appliedFriendCodeProvider: () -> String?
+    private let presentAlert: @MainActor (UIViewController, UIAlertController) -> Void
     private let pasteboard: UIPasteboard
     private let activityControllerFactory: @MainActor ([Any]) -> UIActivityViewController
     private let presentActivityController: @MainActor (UIViewController, UIActivityViewController) -> Void
@@ -41,6 +48,11 @@ final class ReferralViewController: UIViewController {
 
     init(
         personalCodeProvider: @escaping () -> String = { ReferralService.shared.getMyCode() },
+        friendCodeApplier: @escaping FriendCodeApplier = { try ReferralService.shared.applyFriendCode($0) },
+        appliedFriendCodeProvider: @escaping () -> String? = { ReferralService.shared.appliedFriendCode },
+        presentAlert: @escaping @MainActor (UIViewController, UIAlertController) -> Void = { presenter, alert in
+            presenter.present(alert, animated: true)
+        },
         pasteboard: UIPasteboard = .general,
         activityControllerFactory: @escaping @MainActor ([Any]) -> UIActivityViewController = { items in
             UIActivityViewController(activityItems: items, applicationActivities: nil)
@@ -53,6 +65,9 @@ final class ReferralViewController: UIViewController {
         popoverConfigurationObserver: PopoverConfigurationObserver? = nil
     ) {
         self.personalCodeProvider = personalCodeProvider
+        self.friendCodeApplier = friendCodeApplier
+        self.appliedFriendCodeProvider = appliedFriendCodeProvider
+        self.presentAlert = presentAlert
         self.pasteboard = pasteboard
         self.activityControllerFactory = activityControllerFactory
         self.presentActivityController = presentActivityController
@@ -193,7 +208,7 @@ final class ReferralViewController: UIViewController {
         let caps = makeSectionCaps(Localized.text("referral.section.friend_code"))
         let card = SPCard(tone: .surface, padding: AppSpacing.sp3)
 
-        friendCodeField.placeholder = Localized.text("referral.field.friend_code_placeholder")
+        friendCodeField.placeholder = Localized.text("referral.row.friend_code_placeholder")
         friendCodeField.font = AppFonts.mono(.bold, 16)
         friendCodeField.textColor = AppColors.fg1
         friendCodeField.tintColor = AppColors.money500
@@ -205,6 +220,11 @@ final class ReferralViewController: UIViewController {
         applyButton.translatesAutoresizingMaskIntoConstraints = false
         applyButton.isEnabled = false
         applyButton.addTarget(self, action: #selector(applyFriendCodeTapped), for: .touchUpInside)
+        // One apply per device: a code redeemed earlier (here or in Settings)
+        // locks the input instead of inviting a guaranteed `.alreadyApplied`.
+        if appliedFriendCodeProvider() != nil {
+            lockFriendCodeInput()
+        }
 
         let row = UIStackView(arrangedSubviews: [friendCodeField, applyButton])
         row.axis = .horizontal
@@ -433,16 +453,36 @@ final class ReferralViewController: UIViewController {
         }
     }
 
+    /// Redeems the entered code through the service and reports what really
+    /// happened: the credited amount on success, the service's reason on
+    /// rejection. Never confirms an apply the service did not perform (#701).
     @objc private func applyFriendCodeTapped() {
-        // No backend yet — surface a confirmation alert so the user sees the
-        // tap registered.
-        let alert = UIAlertController(
-            title: Localized.text("referral.applied.title"),
-            message: Localized.text("referral.applied.message"),
-            preferredStyle: .alert
-        )
+        let raw = friendCodeField.text ?? ""
+        let title: String
+        let message: String?
+        do {
+            let credited = try friendCodeApplier(raw)
+            title = Localized.text("referral.applied.title")
+            message = Localized.format("referral.hint.bonus_credited", MoneyFormatter.string(credited))
+            lockFriendCodeInput()
+            friendCodeField.resignFirstResponder()
+        } catch let error as ReferralService.ApplyError {
+            title = Localized.text("referral.error.apply_failed")
+            message = error.errorDescription
+        } catch {
+            title = Localized.text("referral.error.apply_failed")
+            message = nil
+        }
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
+        presentAlert(self, alert)
+    }
+
+    private func lockFriendCodeInput() {
+        friendCodeField.isEnabled = false
+        friendCodeField.text = nil
+        friendCodeField.placeholder = Localized.text("referral.row.already_applied")
+        applyButton.isEnabled = false
     }
 
     /// The observer sees actual setter operands; it cannot replace configuration.
