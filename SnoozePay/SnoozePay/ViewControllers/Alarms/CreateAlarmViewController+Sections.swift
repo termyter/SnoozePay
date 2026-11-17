@@ -38,8 +38,8 @@ extension CreateAlarmViewController {
     func makeTimePickerCell(_ tableView: UITableView, at indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: TimePickerCell.reuseID, for: indexPath)
         if let cell = cell as? TimePickerCell {
-            cell.configure(time: viewModel.time)
-            cell.onTimeChanged = { [weak self] date in self?.viewModel.time = date }
+            cell.configure(time: viewModel.pickerTime, calendar: viewModel.pickerCalendar)
+            cell.onTimeChanged = { [weak self] date in self?.viewModel.selectPickerTime(date) }
         }
         return cell
     }
