@@ -29,7 +29,8 @@ final class AlarmFiringViewModel {
 
     // MARK: - Dependencies
 
-    private let balanceService: AlarmFiringBalancing
+    /// Internal for `AlarmFiringViewModel+Price`; nothing else reaches it.
+    let balanceService: AlarmFiringBalancing
     private let alarmRepository: AlarmRepository
     private let scheduler: AlarmScheduler
     private let wakeStore: WakeEventStore
@@ -39,7 +40,13 @@ final class AlarmFiringViewModel {
     private let ledger: AlarmFiringLedgerReading
     private var snoozeSessions: AlarmSnoozeSessionStore?
     private(set) var snoozeReference: AlarmSnoozeReference?
-    private(set) var isProgressionAvailable = true
+    /// The snooze session allows a paid continuation. `isProgressionAvailable`
+    /// also requires the locked price to resolve (`AlarmFiringViewModel+Price`).
+    private(set) var isSessionProgressionAvailable = true
+    /// The snooze-price context read ONCE, when this ring's model is created, and
+    /// reused for every snooze of the ring (price lock, #1137). `nil` only for a
+    /// wallet that supplies no context (test stubs): today's legacy amounts.
+    let lockedPriceContext: SnoozePriceContext?
 
     /// Called before mounting through the existing screen factory/read-back path.
     func bindSnoozeSession(_ reference: AlarmSnoozeReference, store: AlarmSnoozeSessionStore) {
@@ -50,9 +57,9 @@ final class AlarmFiringViewModel {
             let snapshot = try store.resolve(token, alarmID: alarm.id)
             snoozeCount = snapshot.count
             confirmedSnoozeFireDate = snapshot.fireDate
-            isProgressionAvailable = true
+            isSessionProgressionAvailable = true
         } catch {
-            isProgressionAvailable = false
+            isSessionProgressionAvailable = false
             confirmedSnoozeFireDate = nil
             snoozeAnchor = nil
             AppLogger.emit(.ui, .error, "Snooze session unavailable — refusing paid continuation")
@@ -129,16 +136,11 @@ final class AlarmFiringViewModel {
         self.ledger = ledger
         self.firingStartedAt = firingStartedAt
         self.snoozeSessions = snoozeSessions
+        self.lockedPriceContext = Self.lockPriceContext(of: balanceService, alarm: alarm)
         if let pending = try? snoozeSessions?.pendingOccurrenceFinish(alarmID: alarm.id),
            !retireSupersededFinish(pending) {
             finishRequested = true
         }
-    }
-
-    // MARK: - Computed properties for UI
-
-    var currentPenalty: Double {
-        isProgressionAvailable ? alarm.penalty(forSnoozeCount: snoozeCount + 1) : .nan
     }
 
     // MARK: - Progressive escalation (#139)
@@ -308,10 +310,6 @@ final class AlarmFiringViewModel {
         return charges
     }
 
-    var canSnooze: Bool {
-        isProgressionAvailable && balanceService.canAfford(currentPenalty)
-    }
-
     var snoozeButtonTitle: String {
         guard isProgressionAvailable else { return Localized.text("firing.progression.unavailable") }
         if canSnooze {
@@ -335,14 +333,6 @@ final class AlarmFiringViewModel {
     /// must await `.scheduled` before dismissing, even if authorization changes.
     var usesAlarmKit: Bool { scheduler.usesAlarmKit }
 
-    /// Amount charged by the MOST RECENT snooze — the rung the user just paid
-    /// for. `snooze()` bumps `snoozeCount` before this reads, so it equals
-    /// `penalty(forSnoozeCount: snoozeCount)`. Drives the fly-up «−N ₽» in the
-    /// snoozed state. `0` before the first snooze.
-    var lastChargeAmount: Double {
-        snoozeCount > 0 ? alarm.penalty(forSnoozeCount: snoozeCount) : 0
-    }
-
     // MARK: - Snoozed state (#226)
 
     /// Per-step state of the 4-rung charge ladder rendered in the snoozed
@@ -361,33 +351,6 @@ final class AlarmFiringViewModel {
     struct LadderStep: Equatable {
         let amount: Double
         let state: LadderStepState
-    }
-
-    /// The 4-rung progressive charge ladder for the snoozed state. Amounts are
-    /// the doubling schedule `base, ×2, ×4, ×8` (the same ceiling
-    /// `penalty(forSnoozeCount:)` walks). State keys off `snoozeCount`: rungs
-    /// strictly before it are `done` (already paid), the rung AT `snoozeCount`
-    /// is `current` — the NEXT charge (after paying rung `i` the user has
-    /// snoozed `i+1` times, so `snoozeCount` indexes the next unpaid rung, which
-    /// is why it lines up with the CTA's next-step price) — and the rest are
-    /// `future`. `snoozeCount` past the last rung clamps `current` to rung 4 so
-    /// the ladder never blanks out at the ceiling. Returns `[]` when the alarm
-    /// isn't progressive (the snoozed state hides the ladder entirely).
-    var ladderSteps: [LadderStep] {
-        guard isProgressiveActive else { return [] }
-        let amounts = (1...4).map { alarm.penalty(forSnoozeCount: $0) }
-        let currentIdx = min(snoozeCount, amounts.count - 1)
-        return amounts.enumerated().map { idx, amount in
-            let state: LadderStepState
-            if idx < currentIdx {
-                state = .done
-            } else if idx == currentIdx {
-                state = .current
-            } else {
-                state = .future
-            }
-            return LadderStep(amount: amount, state: state)
-        }
     }
 
     /// Fixed wall-clock target of a confirmed snooze. Tracked production schedules use
@@ -476,7 +439,8 @@ final class AlarmFiringViewModel {
         isSnoozeScheduling = true
 
         // Capture the penalty for this snooze BEFORE bumping the count so the
-        // refund (if the schedule fails) returns the exact amount charged.
+        // refund (if the schedule fails) returns the exact amount charged. It is
+        // resolved in the ring's locked price context (#1137).
         let penalty = currentPenalty
         let token: AlarmSnoozeToken?
         do {
@@ -490,7 +454,7 @@ final class AlarmFiringViewModel {
             token = try snoozeSessions?.reserve(alarmID: alarm.id, sessionID: sessionID, expectedCount: snoozeCount)
             if let token { snoozeReference = .token(token) }
         } catch {
-            isProgressionAvailable = false
+            isSessionProgressionAvailable = false
             isSnoozeScheduling = false
             onStateChanged?()
             return false
@@ -506,7 +470,7 @@ final class AlarmFiringViewModel {
         ) else {
             if let token {
                 do { try snoozeSessions?.rejectCharge(token, alarmID: alarm.id) } catch {
-                    isProgressionAvailable = false
+                    isSessionProgressionAvailable = false
                     onStateChanged?()
                 }
             }
@@ -543,7 +507,7 @@ final class AlarmFiringViewModel {
         do {
             try snoozeSessions.recordCharge(token, alarmID: alarm.id)
         } catch {
-            isProgressionAvailable = false
+            isSessionProgressionAvailable = false
             finish(.failure(.system(message: error.localizedDescription)))
             return true
         }
@@ -563,7 +527,7 @@ final class AlarmFiringViewModel {
                 confirmedSnoozeFireDate = receipt?.fireDate
                 finish(mapped.map { _ in () })
             } catch {
-                isProgressionAvailable = false
+                isSessionProgressionAvailable = false
                 snoozeSessions.operationEnded(token)
                 if finishRequested {
                     cleanUpSnoozeAfterFinishRequest()
@@ -759,7 +723,7 @@ final class AlarmFiringViewModel {
     private func applyConfirmedSnooze(token: AlarmSnoozeToken?, anchor: Date) {
         if finishRequested {
             cleanUpSnoozeAfterFinishRequest()
-        } else if hasBeenDismissed || !isProgressionAvailable {
+        } else if hasBeenDismissed || !isSessionProgressionAvailable {
             if token == nil { scheduler.cancel(alarm.id) }
         } else {
             snoozeAnchor = anchor
