@@ -106,9 +106,11 @@ extension WalletViewController {
     }
 
     /// Caps «ИСТОРИЯ ОПЕРАЦИЙ» + trailing «Все операции →» link above the
-    /// transaction-preview card. From XL (`AppTypography.stacksDenseRows`)
-    /// the pair stops fitting a 375pt phone (#1111), so the link drops under
-    /// the caps instead of squeezing either of them.
+    /// transaction-preview card. Side by side the pair fits a 375pt phone's
+    /// 343pt up to XXL (337⅓pt) and first overflows at XXXL (358pt), measured.
+    /// The link drops under the caps from XL anyway, on the shared
+    /// `AppTypography.stacksDenseRows` threshold, so the app's dense rows all
+    /// stack at one size; neither side is ever squeezed (#1111).
     func makeTxPreviewHeader(target: Any, action: Selector) -> UIView {
         let title = makeSectionCaps(Localized.text("wallet.history.caps"))
         // Above the link's 750, so the pair never resolves a squeeze by tie.

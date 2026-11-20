@@ -237,8 +237,8 @@ private final class DayColumn: UIView {
         let height = bar.heightAnchor.constraint(equalToConstant: layoutSpec.emptyTrackHeight)
         barHeightConstraint = height
         // Room for the tallest bar above the initial, always; the column hugs
-        // it (low), so the chart stays at the host's 80pt until a 2× initial
-        // (AX2 and up) needs 2pt more (#1111).
+        // it (low), so the chart stays at the host's 80pt until the initials
+        // need 2pt more: from AX3, measured (#1111).
         let barRoom = WalletWeeklyChartView.maxBarHeight + layoutSpec.labelTopGap
         let hugsBarRoom = labelView.topAnchor.constraint(equalTo: topAnchor, constant: barRoom)
         hugsBarRoom.priority = .defaultLow

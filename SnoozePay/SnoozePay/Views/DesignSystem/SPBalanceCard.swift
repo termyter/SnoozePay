@@ -32,6 +32,8 @@ final class SPBalanceCard: UIView {
     private(set) var currency: Currency
     private(set) var delta: Decimal?
     private(set) var hint: String?
+    /// The card width the hero number was last fitted to (`renderValue`).
+    private var valueFitWidth: CGFloat = 0
 
     // MARK: - Init
 
@@ -71,6 +73,8 @@ final class SPBalanceCard: UIView {
     // MARK: - Layout
 
     override func layoutSubviews() {
+        // A new width re-fits the hero before the stack measures it.
+        if bounds.width != valueFitWidth { renderValue() }
         super.layoutSubviews()
         layer.cornerRadius = AppRadius.xl
         radialOverlay.layer.cornerRadius = AppRadius.xl
@@ -189,17 +193,7 @@ final class SPBalanceCard: UIView {
                 .foregroundColor: AppColors.fg3
             ]
         )
-        // The hero grows on the `.largeTitle` curve, like the other big
-        // display roles. One line always: a long amount shrinks to fit, but
-        // never below today's floor (0.75 × 56pt = 42pt), so the widest
-        // balance that fits today still fits at every size.
-        let valueFont = AppTypography.scaled(AppTypography.moneyXl, as: .largeTitle, compatibleWith: traits)
-        valueLabel.font = valueFont
-        valueLabel.minimumScaleFactor = min(1, Self.valueFloorPointSize / valueFont.pointSize)
-        // fmtRub rule: mono digits, proportional ~4pt gap before ₽ — the
-        // attributed variant re-fonts the separator so it escapes the mono
-        // advance grid (a plain string would render a full-cell space).
-        valueLabel.attributedText = MoneyFormatter.attributed(balance, currency: currency, digitsFont: valueFont)
+        renderValue()
         if let delta {
             deltaLabel.attributedText = renderDelta(delta, font: deltaFont(for: traits))
         }
@@ -210,6 +204,29 @@ final class SPBalanceCard: UIView {
         let wraps = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory)
         deltaLabel.numberOfLines = wraps ? 0 : 1
         hintLabel.numberOfLines = wraps ? 0 : 1
+    }
+
+    /// The hero grows on the `.largeTitle` curve, like the other big display
+    /// roles. One line always: a long amount shrinks to fit, but never below
+    /// today's floor (0.75 × 56pt = 42pt), so the widest balance that fits
+    /// today still fits at every size. A grown font first comes down to the
+    /// card's width itself — to 56pt at most, so `.large` is untouched — or
+    /// the line keeps the grown height around shrunk digits (#1111).
+    private func renderValue() {
+        valueFitWidth = bounds.width
+        let grown = AppTypography.scaled(AppTypography.moneyXl, as: .largeTitle, compatibleWith: traitCollection)
+        let fit = Self.effectiveFontScale(
+            for: MoneyFormatter.attributed(balance, currency: currency, digitsFont: grown),
+            fitting: bounds.width - 2 * AppSpacing.sp5, minimumScaleFactor: 0
+        )
+        let size = max(AppTypography.moneyXl.pointSize, grown.pointSize * fit)
+        let valueFont = size < grown.pointSize ? grown.withSize(size) : grown
+        valueLabel.font = valueFont
+        valueLabel.minimumScaleFactor = min(1, Self.valueFloorPointSize / valueFont.pointSize)
+        // fmtRub rule: mono digits, proportional ~4pt gap before ₽ — the
+        // attributed variant re-fonts the separator so it escapes the mono
+        // advance grid (a plain string would render a full-cell space).
+        valueLabel.attributedText = MoneyFormatter.attributed(balance, currency: currency, digitsFont: valueFont)
     }
 
     /// `moneySm` (14pt) scaled as `.subheadline`, like the alarms-list amount.
@@ -230,6 +247,9 @@ final class SPBalanceCard: UIView {
 
         radialOverlay.translatesAutoresizingMaskIntoConstraints = false
         radialOverlay.layer.masksToBounds = true
+        // The glow is drawn for one size: a text-size change resizes the card
+        // (#1111), and the old bitmap would be stretched instead of redrawn.
+        radialOverlay.contentMode = .redraw
         addSubview(radialOverlay)
 
         capsLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -241,7 +261,7 @@ final class SPBalanceCard: UIView {
         // — `--sp-t-money-xl: 700 56px/60px var(--sp-font-mono)`. The bigger
         // glyphs can overflow on narrow devices for large balances
         // ("1 234 567 ₽"), so we let UIKit shrink to 75% before clipping
-        // (`renderText` scales the font and keeps that 42pt floor).
+        // (`renderValue` scales the font and keeps that 42pt floor).
         valueLabel.font = AppTypography.moneyXl
         // The gradient label keeps this fallback until its own layout pass has
         // resolved the glyph bounds, then replaces it with a masked layer.

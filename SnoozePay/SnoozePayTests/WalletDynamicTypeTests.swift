@@ -84,6 +84,10 @@ final class WalletDynamicTypeTests: XCTestCase {
         for width in [narrow, wide] {
             try assertToday(try screen(.rub, width: width, category: .large), today: todayRUB, width: width)
             try assertToday(try screen(dollar, width: width, category: .large), today: todayUSD, width: width)
+            let empty = try screen(.rub, width: width, category: .large, funded: false)
+            let copy = try label(Localized.text("wallet.history.empty"), in: empty.view)
+            XCTAssertEqual(copy.font.pointSize, 15, "\(width): the empty card's copy moved")
+            XCTAssertEqual(copy.font.fontName, AppTypography.body.fontName)
         }
     }
 
@@ -104,6 +108,9 @@ final class WalletDynamicTypeTests: XCTestCase {
                 }
                 let empty = try screen(.rub, width: width, category: category, funded: false)
                 try assertGrown(empty, name: "\(category.rawValue) empty at \(width)")
+                let copy = try label(Localized.text("wallet.history.empty"), in: empty.view)
+                XCTAssertGreaterThan(copy.font.pointSize, 15, "\(category.rawValue): the empty card did not grow")
+                XCTAssertLessThanOrEqual(copy.font.pointSize, 30)
             }
         }
     }
@@ -140,7 +147,7 @@ final class WalletDynamicTypeTests: XCTestCase {
                 XCTAssertEqual(message.font.fontName, AppTypography.body.fontName)
             } else {
                 XCTAssertGreaterThan(message.font.pointSize, AppTypography.body.pointSize)
-                XCTAssertLessThanOrEqual(message.font.pointSize, AppTypography.body.pointSize * AppTypography.maximumScale)
+                XCTAssertLessThanOrEqual(message.font.pointSize, 30)
             }
             XCTAssertFalse(isClipped(message), "\(category.rawValue): the error copy is clipped")
         }
@@ -157,6 +164,7 @@ final class WalletDynamicTypeTests: XCTestCase {
         override(window, to: Self.ax5)
         window.layoutIfNeeded()
         try assertGrown(controller, name: "live AX5")
+        try assertTracking(in: controller.view, grown: true)
         controller.viewWillAppear(false)
         window.layoutIfNeeded()
         try assertGrown(controller, name: "AX5 after a refresh")
@@ -170,6 +178,7 @@ final class WalletDynamicTypeTests: XCTestCase {
         override(window, to: .large)
         window.layoutIfNeeded()
         try assertToday(controller, today: todayRUB, width: narrow)
+        try assertTracking(in: controller.view, grown: false)
     }
 
     /// Launched at AX5: grown from the first layout, then back to today.
@@ -185,6 +194,47 @@ final class WalletDynamicTypeTests: XCTestCase {
         }
     }
 
+    /// The card's corner glow is drawn for one size. When a text-size change
+    /// grows or shrinks the card, it is redrawn, not the old bitmap stretched
+    /// (QA on #1194) — from a cold `.large` and from a cold AX5.
+    func testTheCornerGlowIsRedrawnWhenTheTextSizeResizesTheCard() throws {
+        for (cold, live) in [(UIContentSizeCategory.large, Self.ax5), (Self.ax5, .large)] {
+            let controller = try screen(.rub, width: narrow, category: cold)
+            let card = try XCTUnwrap(descendants(of: SPBalanceCard.self, in: controller.view).first)
+            let glow = try XCTUnwrap(card.subviews.first { !($0 is UIStackView) })
+            glow.layer.displayIfNeeded()
+            XCTAssertFalse(glow.layer.needsDisplay(), "\(cold.rawValue): the glow was never drawn")
+            let drawnHeight = glow.bounds.height
+            let window = try XCTUnwrap(controller.view.window)
+            override(window, to: live)
+            window.layoutIfNeeded()
+            XCTAssertEqual(glow.frame, card.bounds)
+            XCTAssertNotEqual(glow.bounds.height, drawnHeight, "\(cold.rawValue) → \(live.rawValue): same card height")
+            XCTAssertTrue(glow.layer.needsDisplay(), "\(cold.rawValue) → \(live.rawValue): the old glow is stretched")
+        }
+    }
+
+    /// The «Хватит на ~N» line divides by the screen's own alarm defaults — a
+    /// 100 ₽ default price on the leased suite — in the first frame and on a
+    /// refresh, never by the app's `.shared` ones (#1187's class).
+    func testTheHintReadsTheScreensOwnAlarmDefaults() throws {
+        let fixture = fixture(.rub, penalty: 100)
+        let wallet = fixture.wallet
+        let expected = try XCTUnwrap(SnoozeAffordability.hint(
+            balance: wallet.balance, alarms: [], defaults: fixture.alarmDefaults, context: wallet.priceContext
+        ))
+        let atAnotherPrice = SnoozeAffordability.hint(
+            balance: wallet.balance, alarms: [], defaults: AlarmDefaults(defaults: makeIsolatedDefaults()),
+            context: wallet.priceContext
+        )
+        XCTAssertNotEqual(expected, atAnotherPrice, "100 ₽ does not change the copy, so this proves nothing")
+        let card = try XCTUnwrap(descendants(of: SPBalanceCard.self, in: fixture.screen.view).first)
+        XCTAssertEqual(card.hint, expected, "the first frame's hint")
+        try host(fixture.screen, width: narrow, category: .large)
+        XCTAssertEqual(card.hint, expected, "the refreshed hint")
+        XCTAssertNoThrow(try label(expected, in: card))
+    }
+
     // MARK: - Balance card
 
     /// The widest amounts per currency, formatted by `MoneyFormatter`, at every
@@ -195,6 +245,8 @@ final class WalletDynamicTypeTests: XCTestCase {
         let amounts: [(Decimal, Currency)] = [
             (1_234_567, .rub), (12_840, .rub), (128.5, dollar), (1_234.56, eur), (0, .rub)
         ]
+        var lineAtLarge: [String: CGFloat] = [:]
+        var grownAtToday = 0
         for category in [UIContentSizeCategory.large] + Self.grownCategories {
             for width in [narrow, wide] {
                 for (amount, currency) in amounts {
@@ -208,20 +260,34 @@ final class WalletDynamicTypeTests: XCTestCase {
                         accuracy: 0.001, "\(name): the floor moved"
                     )
                     XCTAssertFalse(isClipped(value), "\(name) is clipped")
-                    if category != .large {
-                        XCTAssertGreaterThan(value.font.pointSize, AppTypography.moneyXl.pointSize, name)
+                    XCTAssertGreaterThanOrEqual(value.font.pointSize, AppTypography.moneyXl.pointSize, name)
+                    // A grown font comes down to the width before UIKit shrinks
+                    // the glyphs, so the line never stays taller than its digits
+                    // (QA on #1194): above 56pt they fit unshrunk, at 56pt it is
+                    // today's line.
+                    let key = "\(amount) \(currency.code) \(width)"
+                    if category == .large { lineAtLarge[key] = value.bounds.height }
+                    if value.font.pointSize > AppTypography.moneyXl.pointSize {
+                        XCTAssertLessThanOrEqual(naturalWidth(of: value), value.bounds.width + 0.5, "\(name) shrinks")
+                    } else {
+                        XCTAssertEqual(value.bounds.height, lineAtLarge[key] ?? 0, accuracy: 0.01, "\(name): line")
+                        grownAtToday += category == .large ? 0 : 1
                     }
                 }
             }
         }
+        XCTAssertGreaterThan(grownAtToday, 0, "no grown amount needed the width fit; the line check proves nothing")
     }
 
     /// From XL the delta and hint wrap between words; the amount inside the
-    /// delta is one unbreakable run, and the delta keeps its tint.
+    /// delta is one unbreakable run, and the delta keeps its tint. The hints
+    /// are the card's real copy, the empty-wallet one being the longest.
     func testFromXLTheDeltaAndHintWrapWithoutSplittingTheAmount() throws {
-        let hint = "Хватит на ~16 откладываний при текущей цене"
+        let hints = [Localized.format("common.snooze_affordability", 16), Localized.text("wallet.hint.empty_balance")]
         for category in Self.grownCategories {
-            for (delta, ink) in [(Decimal(1_234_567), AppColors.money400), (Decimal(-12_840), AppColors.pain400)] {
+            for ((delta, ink), hint) in zip(
+                [(Decimal(1_234_567), AppColors.money400), (Decimal(-12_840), AppColors.pain400)], hints
+            ) {
                 let card = SPBalanceCard(balance: 12_840, currency: .rub, delta: delta, hint: hint)
                 lay(card, category: category, width: narrow)
                 let name = "\(category.rawValue) \(delta)"
@@ -251,7 +317,8 @@ final class WalletDynamicTypeTests: XCTestCase {
     /// update renders at the current size, and `.large` is today's card.
     func testTheCardFollowsALiveChangeAndAnUpdateKeepsItsSize() throws {
         let card = balanceCard(12_840, .rub, category: Self.ax5, width: narrow)
-        card.update(balance: 12_790, currency: .rub, delta: 1_200, hint: "Хватит на ~16 откладываний")
+        let hint = Localized.format("common.snooze_affordability", 16)
+        card.update(balance: 12_790, currency: .rub, delta: 1_200, hint: hint)
         lay(card, category: Self.ax5, width: narrow)
         let caps = try label(Localized.text("common.caps.balance"), in: card)
         let capsText = try XCTUnwrap(caps.attributedText)
@@ -308,17 +375,35 @@ final class WalletDynamicTypeTests: XCTestCase {
                 XCTAssertEqual(column.initial.frame.maxY, grown.bounds.maxY, accuracy: 0.01)
             }
         }
+        // On the screen itself: 80pt until the initials' row needs more, from AX3.
+        let onScreen: [(UIContentSizeCategory, CGFloat)] = [
+            (.extraExtraExtraLarge, 80), (.accessibilityMedium, 80), (.accessibilityLarge, 80),
+            (.accessibilityExtraLarge, 82), (Self.ax5, 82)
+        ]
+        for (category, height) in onScreen {
+            let controller = try screen(.rub, width: narrow, category: category)
+            let chart = try XCTUnwrap(descendants(of: WalletWeeklyChartView.self, in: controller.view).first)
+            XCTAssertEqual(chart.bounds.height, height, accuracy: 0.01, category.rawValue)
+        }
     }
 
     // MARK: - Fixtures
 
     private func usd() throws -> Currency { try XCTUnwrap(Currency(code: "USD")) }
 
-    /// A wallet whose currency is frozen by its first payment (12 840 ₽ or
-    /// $128.50), with one small charge — or an untouched, empty wallet.
     private func screen(
         _ currency: Currency, width: CGFloat, category: UIContentSizeCategory, funded: Bool = true
     ) throws -> WalletViewController {
+        try host(fixture(currency, funded: funded).screen, width: width, category: category)
+    }
+
+    /// A wallet whose currency is frozen by its first payment (12 840 ₽ or
+    /// $128.50), with one small charge — or an untouched, empty wallet — and
+    /// its screen, not yet shown. Wallet, alarms and alarm defaults share one
+    /// leased suite.
+    private func fixture(
+        _ currency: Currency, funded: Bool = true, penalty: Double? = nil
+    ) -> (screen: WalletViewController, wallet: BalanceService, alarmDefaults: AlarmDefaults) {
         let defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         let ledger = TransactionRepository(defaults: defaults)
@@ -331,16 +416,26 @@ final class WalletDynamicTypeTests: XCTestCase {
             XCTAssertEqual(wallet.topUpFromPurchase(amount: amount, currency: currency), .credited)
             XCTAssertTrue(wallet.charge(amount: currency == .rub ? 50 : 1, alarmID: nil))
         }
+        let alarmDefaults = AlarmDefaults(defaults: defaults)
+        if let penalty { alarmDefaults.penaltyAmount = penalty }
         let controller = WalletViewController(
             balanceService: wallet, transactionRepository: ledger,
             alarmRepository: AlarmRepository(defaults: defaults, scheduler: AlarmsListViewModelTests.StubScheduler()),
-            alarmDefaults: AlarmDefaults(defaults: defaults)
+            alarmDefaults: alarmDefaults
         )
+        return (controller, wallet, alarmDefaults)
+    }
+
+    /// Shown in a real window on the app's scene, at the given width and size.
+    @discardableResult
+    private func host(
+        _ controller: WalletViewController, width: CGFloat, category: UIContentSizeCategory
+    ) throws -> WalletViewController {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 1400))
         window.traitOverrides.preferredContentSizeCategory = category
-        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
-            window.windowScene = scene
-        }
+        window.windowScene = try XCTUnwrap(
+            UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first, "no scene to show it in"
+        )
         hostWindows.append(window)
         window.rootViewController = controller
         window.isHidden = false
@@ -352,7 +447,8 @@ final class WalletDynamicTypeTests: XCTestCase {
     private func balanceCard(
         _ balance: Decimal, _ currency: Currency, category: UIContentSizeCategory, width: CGFloat
     ) -> SPBalanceCard {
-        let card = SPBalanceCard(balance: balance, currency: currency, delta: 1_200, hint: "Хватит на ~16 откладываний")
+        let hint = Localized.format("common.snooze_affordability", 16)
+        let card = SPBalanceCard(balance: balance, currency: currency, delta: 1_200, hint: hint)
         lay(card, category: category, width: width)
         return card
     }
@@ -362,6 +458,7 @@ final class WalletDynamicTypeTests: XCTestCase {
         override(card, to: category)
         let cardWidth = width - 2 * AppSpacing.screenInset
         card.frame = CGRect(x: 0, y: 0, width: cardWidth, height: 300)
+        card.layoutIfNeeded()  // the hero fits its font to this width
         card.frame.size.height = fitted(card, width: cardWidth)
         card.layoutIfNeeded()
     }
@@ -483,7 +580,8 @@ final class WalletDynamicTypeTests: XCTestCase {
         for (text, fixed) in zip(grownTexts, fixedSizes) {
             let size = try attributedFont(of: label(text, in: view)).pointSize
             XCTAssertGreaterThan(size, fixed, "\(name): «\(text)» did not grow", file: file, line: line)
-            XCTAssertLessThanOrEqual(size, fixed * AppTypography.maximumScale, "\(name): «\(text)»", file: file, line: line)
+            let cap = fixed * AppTypography.maximumScale
+            XCTAssertLessThanOrEqual(size, cap, "\(name): «\(text)»", file: file, line: line)
         }
         let card = try XCTUnwrap(descendants(of: SPBalanceCard.self, in: content).first)
         let value = try XCTUnwrap(descendants(of: SPGradientTextLabel.self, in: card).first)
@@ -499,9 +597,29 @@ final class WalletDynamicTypeTests: XCTestCase {
                 "\(name): a card left the screen", file: file, line: line
             )
         }
-        for day in columns(of: try XCTUnwrap(descendants(of: WalletWeeklyChartView.self, in: content).first)) {
+        XCTAssertEqual(
+            value.bounds.height, value.intrinsicContentSize.height, accuracy: 0.01,
+            "\(name): the hero's line is not its font's", file: file, line: line
+        )
+
+        // The chart's own measurement, not the `chart()` fixture's.
+        let chart = try XCTUnwrap(descendants(of: WalletWeeklyChartView.self, in: content).first)
+        let days = columns(of: chart)
+        XCTAssertEqual(days.count, 7, name, file: file, line: line)
+        let row = ceil(try XCTUnwrap(days.first).initial.font.lineHeight)
+        XCTAssertEqual(
+            chart.bounds.height, max(80, WalletWeeklyChartView.maxBarHeight + 6 + row), accuracy: 0.01,
+            "\(name): the chart is not its text's height", file: file, line: line
+        )
+        for day in days {
             XCTAssertGreaterThan(day.initial.font.pointSize, AppTypography.meta.pointSize, name, file: file, line: line)
             XCTAssertGreaterThanOrEqual(day.bar.minY, 0, "\(name): a bar left the chart", file: file, line: line)
+            XCTAssertEqual(
+                day.initial.convert(day.initial.bounds, to: chart).maxY, chart.bounds.height, accuracy: 0.01,
+                "\(name): an initial is off the chart's foot", file: file, line: line
+            )
+            let column = try XCTUnwrap(day.initial.superview)
+            XCTAssertFalse(column.hasAmbiguousLayout, "\(name): a day column is ambiguous", file: file, line: line)
         }
 
         let historyCaps = try label(Localized.text("wallet.history.caps"), in: content)
@@ -516,6 +634,15 @@ final class WalletDynamicTypeTests: XCTestCase {
         let title = try label(Localized.text("wallet.title"), in: view)
         let button = try XCTUnwrap(descendants(of: SPButton.self, in: view).first)
         XCTAssertFalse(title.frame.intersects(button.frame), "\(name): title under the button", file: file, line: line)
+        XCTAssertEqual(
+            button.frame.width, button.intrinsicContentSize.width, accuracy: 0.01,
+            "\(name): «Пополнить» was squeezed", file: file, line: line
+        )
+        let buttonTitle = try label(Localized.text("common.button.top_up"), in: button)
+        XCTAssertLessThanOrEqual(
+            naturalWidth(of: buttonTitle), buttonTitle.bounds.width + 0.5, "\(name): «Пополнить» is cut",
+            file: file, line: line
+        )
 
         let labels = visibleLabels(in: view)
         XCTAssertGreaterThanOrEqual(labels.count, 15, "\(name): too few labels to say anything", file: file, line: line)
@@ -524,6 +651,32 @@ final class WalletDynamicTypeTests: XCTestCase {
                 isClipped(label), "\(name): «\(label.attributedText?.string ?? "")» is clipped: \(label.bounds)",
                 file: file, line: line
             )
+        }
+    }
+
+    /// The title's and section caps' tracking: today's at `.large`, the same
+    /// em at a grown size (rebuilt on a live change).
+    private func assertTracking(
+        in view: UIView, grown: Bool, file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let roles: [(String, UIFont, CGFloat)] = [
+            (Localized.text("wallet.title"), AppTypography.h1, AppTypography.h1Kerning),
+            (Localized.text("wallet.chart.caps"), AppTypography.caps, AppTypography.capsKerning),
+            (Localized.text("wallet.history.caps"), AppTypography.caps, AppTypography.capsKerning)
+        ]
+        for (text, base, kerning) in roles {
+            let shown = try label(text, in: view)
+            let font = try attributedFont(of: shown)
+            let kern = try XCTUnwrap(shown.attributedText?.attribute(.kern, at: 0, effectiveRange: nil) as? CGFloat)
+            if grown {
+                XCTAssertGreaterThan(font.pointSize, base.pointSize, text, file: file, line: line)
+                XCTAssertEqual(
+                    kern / font.pointSize, kerning / base.pointSize, accuracy: 0.0001, text, file: file, line: line
+                )
+            } else {
+                XCTAssertEqual(font.pointSize, base.pointSize, text, file: file, line: line)
+                XCTAssertEqual(kern, kerning, "\(text): not today's tracking", file: file, line: line)
+            }
         }
     }
 
