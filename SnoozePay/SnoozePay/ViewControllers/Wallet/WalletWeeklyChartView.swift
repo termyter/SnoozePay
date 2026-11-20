@@ -187,6 +187,9 @@ private final class DayColumn: UIView {
     private let labelView = UILabel()
     private let gradient = CAGradientLayer()
     private var barHeightConstraint: NSLayoutConstraint?
+    private lazy var labelHeightConstraint = labelView.heightAnchor.constraint(
+        equalToConstant: layoutSpec.labelHeight
+    )
     private let layoutSpec: WalletWeeklyChartView.Layout.Type
 
     init(layout: WalletWeeklyChartView.Layout.Type) {
@@ -200,6 +203,9 @@ private final class DayColumn: UIView {
         // white card. Same defect class as `SPAmountPreset` (#489).
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: DayColumn, _) in
             view.refreshGradientColors()
+        }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: DayColumn, _) in
+            view.renderLabelFont()
         }
     }
 
@@ -223,13 +229,19 @@ private final class DayColumn: UIView {
         addSubview(bar)
 
         labelView.translatesAutoresizingMaskIntoConstraints = false
-        labelView.font = AppTypography.meta
         labelView.textColor = WalletQuietInk.caption
         labelView.textAlignment = .center
+        labelView.numberOfLines = 1
         addSubview(labelView)
 
         let height = bar.heightAnchor.constraint(equalToConstant: layoutSpec.emptyTrackHeight)
         barHeightConstraint = height
+        // Room for the tallest bar above the initial, always; the column hugs
+        // it (low), so the chart stays at the host's 80pt until the initials
+        // need 2pt more: from AX3, measured (#1111).
+        let barRoom = WalletWeeklyChartView.maxBarHeight + layoutSpec.labelTopGap
+        let hugsBarRoom = labelView.topAnchor.constraint(equalTo: topAnchor, constant: barRoom)
+        hugsBarRoom.priority = .defaultLow
 
         NSLayoutConstraint.activate([
             bar.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -239,13 +251,27 @@ private final class DayColumn: UIView {
             labelView.leadingAnchor.constraint(equalTo: leadingAnchor),
             labelView.trailingAnchor.constraint(equalTo: trailingAnchor),
             labelView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            labelView.heightAnchor.constraint(equalToConstant: layoutSpec.labelHeight)
+            labelHeightConstraint,
+            labelView.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: barRoom),
+            hugsBarRoom
         ])
 
         gradient.locations = SPSupport.painGradientLocations
         gradient.startPoint = SPSupport.gradientStart
         gradient.endPoint = SPSupport.gradientEnd
         refreshGradientColors()
+        renderLabelFont()
+    }
+
+    /// The day initial follows the content size category (#1111) on the
+    /// `.footnote` curve. Today's 14pt row stays up to `.large`; a grown
+    /// initial gets a row of its full line height. The bars keep their
+    /// geometry: the row never takes the tallest bar's 40pt.
+    private func renderLabelFont() {
+        let font = AppTypography.scaled(AppTypography.meta, as: .footnote, compatibleWith: traitCollection)
+        labelView.font = font
+        let grown = font.pointSize > AppTypography.meta.pointSize
+        labelHeightConstraint.constant = grown ? ceil(font.lineHeight) : layoutSpec.labelHeight
     }
 
     /// Re-resolve the bar gradient against THIS view's traits. Called from

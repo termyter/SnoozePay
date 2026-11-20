@@ -14,14 +14,15 @@ extension WalletViewController {
 
         let title = UILabel()
         title.translatesAutoresizingMaskIntoConstraints = false
-        title.attributedText = NSAttributedString(
-            string: Localized.text("wallet.title"),
-            attributes: [
-                .font: AppTypography.h1,
-                .kern: -32 * 0.01,  // matches `letterSpacing: -.02em`
-                .foregroundColor: AppColors.fg1
-            ]
-        )
+        // One word: it never wraps. At the largest sizes it shrinks to fit
+        // beside the button (floor 0.5), never "…" — same as the alarms list.
+        title.numberOfLines = 1
+        title.adjustsFontSizeToFitWidth = true
+        title.minimumScaleFactor = 0.5
+        Self.renderTitle(title)
+        title.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (label: UILabel, _) in
+            Self.renderTitle(label)
+        }
 
         let topUpButton = SPButton(
             title: Localized.text("common.button.top_up"),
@@ -31,6 +32,8 @@ extension WalletViewController {
         )
         topUpButton.translatesAutoresizingMaskIntoConstraints = false
         topUpButton.addTarget(target, action: action, for: .touchUpInside)
+        // The button keeps its width; the shrink-to-fit title (750) gives way.
+        topUpButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         let hairline = UIView()
         hairline.translatesAutoresizingMaskIntoConstraints = false
@@ -61,43 +64,79 @@ extension WalletViewController {
         return header
     }
 
-    /// Header for the weekly chart section.
-    func makeWeeklyChartHeader() -> UILabel {
-        let label = UILabel()
+    /// h1 «Кошелёк» at the label's content size category, with today's
+    /// −0.01em tracking re-proportioned to the scaled size (#1111).
+    private static func renderTitle(_ label: UILabel) {
+        let font = AppTypography.scaledH1(compatibleWith: label.traitCollection)
         label.attributedText = NSAttributedString(
-            string: Localized.text("wallet.chart.caps"),
+            string: Localized.text("wallet.title"),
             attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg2
+                .font: font,
+                .kern: AppTypography.kerning(AppTypography.h1Kerning, of: AppTypography.h1, scaledTo: font),
+                .foregroundColor: AppColors.fg1
             ]
         )
+    }
+
+    /// Header for the weekly chart section.
+    func makeWeeklyChartHeader() -> UILabel {
+        makeSectionCaps(Localized.text("wallet.chart.caps"))
+    }
+
+    /// Caps section header that follows the content size category: the
+    /// tracking lives in the attributed string, so it is rebuilt on a change.
+    /// One line below XL, as before; from XL it may wrap between words.
+    private func makeSectionCaps(_ text: String) -> UILabel {
+        let render = { (label: UILabel) in
+            let traits = label.traitCollection
+            let font = AppTypography.scaledCaps(compatibleWith: traits)
+            label.attributedText = NSAttributedString(string: text, attributes: [
+                .font: font,
+                .kern: AppTypography.kerning(AppTypography.capsKerning, of: AppTypography.caps, scaledTo: font),
+                .foregroundColor: AppColors.fg2
+            ])
+            label.numberOfLines = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory) ? 0 : 1
+        }
+        let label = UILabel()
+        render(label)
+        label.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (label: UILabel, _) in
+            render(label)
+        }
         return label
     }
 
     /// Caps «ИСТОРИЯ ОПЕРАЦИЙ» + trailing «Все операции →» link above the
-    /// transaction-preview card.
+    /// transaction-preview card. Side by side the pair fits a 375pt phone's
+    /// 343pt up to XXL (337⅓pt) and first overflows at XXXL (358pt), measured.
+    /// The link drops under the caps from XL anyway, on the shared
+    /// `AppTypography.stacksDenseRows` threshold, so the app's dense rows all
+    /// stack at one size; neither side is ever squeezed (#1111).
     func makeTxPreviewHeader(target: Any, action: Selector) -> UIView {
-        let title = UILabel()
-        title.attributedText = NSAttributedString(
-            string: Localized.text("wallet.history.caps"),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg2
-            ]
-        )
+        let title = makeSectionCaps(Localized.text("wallet.history.caps"))
+        // Above the link's 750, so the pair never resolves a squeeze by tie.
+        title.setContentCompressionResistancePriority(UILayoutPriority(751), for: .horizontal)
 
         let link = UIButton(type: .system)
         link.setTitle(Localized.text("wallet.history.link_all"), for: .normal)
-        link.titleLabel?.font = AppTypography.buttonSm
         link.setTitleColor(AppColors.money400, for: .normal)
         link.addTarget(target, action: action, for: .touchUpInside)
 
         let stack = UIStackView(arrangedSubviews: [title, link])
-        stack.axis = .horizontal
-        stack.alignment = .firstBaseline
-        stack.distribution = .equalSpacing
+        let arrange = { (stack: UIStackView) in
+            let traits = stack.traitCollection
+            // `buttonSm` (14pt) scaled as `.subheadline`; the button re-measures.
+            let linkFont = AppTypography.scaled(AppTypography.buttonSm, as: .subheadline, compatibleWith: traits)
+            link.titleLabel?.font = linkFont
+            link.invalidateIntrinsicContentSize()
+            let stacked = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory)
+            stack.axis = stacked ? .vertical : .horizontal
+            stack.alignment = stacked ? .leading : .firstBaseline
+            stack.distribution = stacked ? .fill : .equalSpacing
+        }
+        arrange(stack)
+        stack.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (stack: UIStackView, _) in
+            arrange(stack)
+        }
         return stack
     }
 
@@ -175,7 +214,8 @@ extension WalletViewController {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.md)
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = AppTypography.body
+        label.font = AppTypography.scaledBody
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.textAlignment = .center
@@ -199,7 +239,8 @@ extension WalletViewController {
         let card = SPCard(tone: .surface, padding: AppSpacing.sp5, cornerRadius: AppRadius.md)
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = AppTypography.body
+        label.font = AppTypography.scaledBody
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.pain400
         label.numberOfLines = 0
         label.textAlignment = .center
@@ -262,7 +303,8 @@ extension WalletViewController {
     /// The word «штрафы» is dropped here too for a unified soft tone (#278).
     func makeFooterCaption() -> UILabel {
         let label = UILabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = WalletQuietInk.caption
         label.numberOfLines = 0
         label.textAlignment = .center
