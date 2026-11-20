@@ -275,6 +275,13 @@ private final class CardRowMaskSection: NSObject, UITableViewDataSource, UITable
         table.sectionFooterHeight = 24
         table.sectionHeaderTopPadding = 0
         table.separatorStyle = .none
+        // The fixture shares the host's scene, so whether the status bar shows is
+        // the host root's call: Splash and Onboarding hide it, the tab bar does
+        // not. Under a visible status bar iOS 26 softens the table's top edge,
+        // which fades the first row's top arc and reads as a clipped outline —
+        // a used simulator with `onboarding_completed` failed both themes so (#1187).
+        table.topEdgeEffect.isHidden = true
+        table.bottomEdgeEffect.isHidden = true
         table.dataSource = self
         table.delegate = self
         window.makeKeyAndVisible()

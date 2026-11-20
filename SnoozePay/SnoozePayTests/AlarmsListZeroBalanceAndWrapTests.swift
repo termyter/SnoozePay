@@ -27,7 +27,10 @@ final class AlarmsListZeroBalanceTests: XCTestCase {
     }
 
     /// Builds a VM wired to an isolated BalanceService seeded with the
-    /// given balance, so the shared singleton stays untouched.
+    /// given balance, so the shared singleton stays untouched. The price the
+    /// hint divides by comes from the same suite: left at `.shared`, it read
+    /// the host's `default_penalty_amount` and a used simulator's 200 ₽
+    /// turned "~3" into "~0" (#1187).
     private func makeViewModel(balance: Double) -> AlarmsListViewModel {
         let center = NotificationCenter()
         testDefaults.set(balance, forKey: "user_balance")
@@ -36,7 +39,8 @@ final class AlarmsListZeroBalanceTests: XCTestCase {
             alarmRepository: repo,
             balanceService: service,
             transactionRepository: TransactionRepository(defaults: testDefaults),
-            notificationCenter: center
+            notificationCenter: center,
+            alarmDefaults: AlarmDefaults(defaults: testDefaults)
         )
         viewModel.loadData()
         return viewModel
@@ -61,7 +65,7 @@ final class AlarmsListZeroBalanceTests: XCTestCase {
         let viewModel = makeViewModel(balance: 150)
 
         XCTAssertFalse(viewModel.isZeroBalance)
-        // 150 ₽ / default 50 ₽ penalty → 3 snoozes.
+        // 150 ₽ / the 50 ₽ factory default an empty suite gives → 3 snoozes.
         XCTAssertEqual(viewModel.balanceHint, "Хватит на ~3 откладывания")
         XCTAssertEqual(viewModel.balanceHint, viewModel.affordabilityHint)
     }
