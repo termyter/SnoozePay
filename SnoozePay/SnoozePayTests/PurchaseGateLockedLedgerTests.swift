@@ -103,6 +103,22 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
         XCTAssertEqual(service.prePurchaseRefusal(in: usd), .ledgerUnreadable)
     }
 
+    /// The gate's order, pinned at the service (#1184): the readability probe
+    /// runs before the currency rule. The latch still says "readable" from the
+    /// `balance` read, so a currency check first would name a foreign
+    /// storefront to a wallet that can take no credit at all.
+    func testLedgerDamagedAfterLaunch_establishedWallet_otherCurrency_namesTheLedgerFirst() {
+        XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(usd), .frozen(usd))
+        let service = makeService()
+        XCTAssertEqual(service.balance, 0)
+
+        defaults.set(unreadable, forKey: "stored_transactions")
+
+        XCTAssertEqual(service.purchaseRefusal(in: eur), .foreignCurrency(wallet: usd, purchase: eur),
+                       "Precondition: the stale latch is what makes the order matter")
+        XCTAssertEqual(service.prePurchaseRefusal(in: eur), .ledgerUnreadable)
+    }
+
     func testReadableWallet_foreignPack_isStillTheCurrencyNotice() {
         let service = makeService()
         XCTAssertTrue(service.topUp(amount: 149))

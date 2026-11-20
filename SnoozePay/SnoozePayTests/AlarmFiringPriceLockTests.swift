@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -226,7 +227,16 @@ final class AlarmFiringPriceLockTests: XCTestCase {
         XCTAssertTrue(scaleStore.record(usdScale))
         fund(9.99, in: usd)
 
-        XCTAssertTrue(model.isLockedPriceStranded)
+        var lines: [(level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append(($1, $2)) }, perform: {
+            XCTAssertTrue(model.isLockedPriceStranded)
+        })
+        // A readable ledger: the freeze is the cause, and the line says so (#1184).
+        let handle = String(alarm.id.uuidString.prefix(8))
+        lines = lines.filter { $0.message.hasPrefix("firing: price locked") }
+        XCTAssertEqual(lines.map(\.level), [.error])
+        XCTAssertEqual(lines.first?.message,
+                       "firing: price locked in RUB, wallet frozen in USD alarm=\(handle) — snooze refused, no charge")
         XCTAssertFalse(model.isProgressionAvailable)
         XCTAssertFalse(model.canSnooze)
         XCTAssertTrue(model.currentPenalty.isNaN)

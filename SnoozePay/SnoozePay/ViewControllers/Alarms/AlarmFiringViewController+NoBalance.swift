@@ -1,3 +1,4 @@
+import os
 import StoreKit
 import UIKit
 
@@ -220,18 +221,16 @@ extension AlarmFiringViewController {
         guard !noBalancePurchaseInFlight, !viewModel.finishRequested else { return }
         let purchase = noBalancePurchase
         guard let offer = purchase.offer else {
+            // Unreachable while the CTA is drawn: no offer, no price, disabled
+            // button. Redraw it as such, as the firing sheet does (#1184).
+            AppLogger.emit(.ui, .error, "firing: no-balance tap found no offer — CTA redrawn, nothing dispatched")
             refreshNoBalanceCatalog()
             return
         }
         // Same gate as both top-up sheets: an unreadable ledger refuses every
         // pack, accepted currency included, as a purchase failure (#1168).
-        let refusal = viewModel.prePurchaseRefusal(in: offer.currency)
-        if let message = ForeignCurrencyNotice.blockingMessage(for: refusal) {
-            if refusal == .ledgerUnreadable {
-                presentNoBalancePurchaseFailureAlert(message: message)
-            } else {
-                present(ForeignCurrencyNotice.alert(message: message), animated: true)
-            }
+        if let refusal = viewModel.prePurchaseRefusal(in: offer.currency) {
+            presentNoBalanceRefusal(refusal, productID: offer.productID)
             return
         }
         noBalancePurchaseInFlight = true
@@ -271,6 +270,24 @@ extension AlarmFiringViewController {
     }
 
     // MARK: - Helpers
+
+    /// The gate's refusal, logged and shown: the lock as a purchase failure, a
+    /// foreign storefront as the currency notice. An expected outcome, hence a
+    /// notice; the alert is the user's half, the line is support's (#1184).
+    private func presentNoBalanceRefusal(_ refusal: BalanceService.PurchaseRefusal, productID: String) {
+        let log = { (cause: String) in
+            AppLogger.emit(.ui, .default, "firing: top-up refused before purchase product=\(productID) — \(cause)")
+        }
+        switch refusal {
+        case .ledgerUnreadable:
+            log("ledger unreadable")
+            presentNoBalancePurchaseFailureAlert(message: ForeignCurrencyNotice.ledgerUnreadableMessage)
+        case let .foreignCurrency(wallet, storefront):
+            log("wallet in \(wallet.code), pack in \(storefront.code)")
+            let message = ForeignCurrencyNotice.message(wallet: wallet, storefront: storefront)
+            present(ForeignCurrencyNotice.alert(message: message), animated: true)
+        }
+    }
 
     func presentNoBalancePurchaseFailureAlert(message: String?) {
         let alert = UIAlertController(
