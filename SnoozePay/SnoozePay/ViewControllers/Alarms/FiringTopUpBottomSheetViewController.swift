@@ -816,7 +816,7 @@ extension FiringTopUpBottomSheetViewController {
         // presented above it within the 2 s (#1190).
         scheduleSuccessDismissal(2) { [weak self] in
             guard let self else { return }
-            dismissTopUpSheetAfterSuccess(self, ownAlert: self.ownAlert)
+            self.dismissTopUpSheetAfterSuccess(ownAlert: self.ownAlert)
         }
     }
 

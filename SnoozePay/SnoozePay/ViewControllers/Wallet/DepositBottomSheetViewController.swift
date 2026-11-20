@@ -529,31 +529,35 @@ final class DepositBottomSheetViewController: UIViewController {
         purchaseInFlight = true
         depositButton.isEnabled = false
 
-        if let purchaseProduct {
+        // One count for the test hook and StoreKit alike, so the hook-driven
+        // tests pin the one a real purchase needs (#1190).
+        if let dispatch = purchaseDispatch(for: preset.productID) {
             ownPurchasesOutstanding += 1
-            purchaseProduct(preset.productID)
+            dispatch(preset.productID)
             return
         }
-        if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
-            ownPurchasesOutstanding += 1
-            Task { @MainActor in
-                await StoreKitService.shared.purchase(product)
+        #if DEBUG
+        if offerProvider == nil,
+           StoreKitService.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments) {
+            let amount = Double(preset.amount)
+            if balance.topUp(amount: amount),
+               let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
+                handlePurchaseSuccess(receipt)
+            } else {
+                handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
             }
-        } else {
-            #if DEBUG
-            if offerProvider == nil,
-               StoreKitService.isCatalogForcedEmpty(arguments: ProcessInfo.processInfo.arguments) {
-                let amount = Double(preset.amount)
-                if balance.topUp(amount: amount),
-                   let receipt = TopUpSuccessReceipt(amount: amount, currency: balance.walletCurrency) {
-                    handlePurchaseSuccess(receipt)
-                } else {
-                    handlePurchaseFailure(message: StoreKitService.ledgerLockedFailureMessage)
-                }
-                return
-            }
-            #endif
-            handlePurchaseFailure(message: Localized.text("deposit.error.products_unavailable"))
+            return
+        }
+        #endif
+        handlePurchaseFailure(message: Localized.text("deposit.error.products_unavailable"))
+    }
+
+    /// The test hook, or the StoreKit purchase of a catalogue product; `nil` when there is neither.
+    private func purchaseDispatch(for productID: String) -> ((String) -> Void)? {
+        if let purchaseProduct { return purchaseProduct }
+        guard let product = StoreKitService.shared.products.first(where: { $0.id == productID }) else { return nil }
+        return { _ in
+            Task { @MainActor in await StoreKitService.shared.purchase(product) }
         }
     }
 
@@ -588,11 +592,17 @@ final class DepositBottomSheetViewController: UIViewController {
         // a screen presented above it (#1190).
         scheduleSuccessDismissal(2) { [weak self] in
             guard let self else { return }
-            dismissTopUpSheetAfterSuccess(self, ownAlert: self.ownAlert)
+            self.dismissTopUpSheetAfterSuccess(ownAlert: self.ownAlert)
         }
     }
 
+    /// UIKit refuses a second presentation, so a refused alert is never recorded:
+    /// it would replace the alert that is really up as `ownAlert` (#1190).
     private func presentOwnAlert(_ alert: UIAlertController) {
+        if let above = presentedViewController {
+            AppLogger.emit(.ui, .error, "DepositSheet: alert not shown, \(type(of: above)) is presented")
+            return
+        }
         ownAlert = alert
         present(alert, animated: true)
     }

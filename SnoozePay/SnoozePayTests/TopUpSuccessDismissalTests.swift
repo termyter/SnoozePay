@@ -111,8 +111,7 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         present(firing, on: firingScreen)
 
         try button(in: firing, id: "firingTopUp.purchaseButton").sendActions(for: .touchUpInside)
-        center.post(name: StoreKitService.purchaseCompletedNotification, object: nil,
-                    userInfo: [StoreKitService.amountUserInfoKey: 149.0])
+        XCTAssertEqual(postCompletion(on: center), [notStartedLine], "The deposit sheet's gate turned it away")
         XCTAssertNil(try label(in: deposit, id: "deposit.successAmount").text, "No success state on the deposit sheet")
         XCTAssertTrue(try button(in: deposit, id: "deposit.purchaseButton").isEnabled)
         XCTAssertNil(depositDismissal, "The deposit sheet schedules no dismissal")
@@ -120,17 +119,67 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         // Run what main scheduled, so a regression shows the firing screen going down.
         depositDismissal?()
         try XCTUnwrap(firingDismissal, "The firing sheet's own purchase succeeded")()
+        XCTAssertFalse(firingScreen.isBeingDismissed, presentationDiagnostics(rootedAt: host))
+        XCTAssertFalse(deposit.isBeingDismissed, presentationDiagnostics(rootedAt: host))
         XCTAssertTrue(spin { firingScreen.presentedViewController == nil }, presentationDiagnostics(rootedAt: host))
         XCTAssertNil(firing.presentingViewController, "The firing sheet closed itself")
+        drainMainQueue()
         XCTAssertTrue(deposit.presentedViewController === firingScreen, presentationDiagnostics(rootedAt: host))
         XCTAssertTrue(host.presentedViewController === deposit, presentationDiagnostics(rootedAt: host))
     }
 
     /// The deposit sheet's rule (#1190): a completion lands only while one of its
-    /// own purchases is outstanding. A cancel ends one; the pending notice does
-    /// not, so Ask to Buy's late approval is still this sheet's, even after a
-    /// later tap was cancelled.
+    /// own purchases is outstanding. A cancel of its tap in flight ends one; the
+    /// pending notice does not, and neither does another screen's cancel, so Ask
+    /// to Buy's late approval is still this sheet's, even after a later tap was
+    /// cancelled. The approval lands with nothing presented: the user answered
+    /// the notice before tapping again.
     func testDepositSheetTakesOnlyCompletionsOfItsOwnUncancelledPurchases() throws {
+        let center = NotificationCenter()
+        let balance = BalanceService(defaults: makeIsolatedDefaults(), notificationCenter: center)
+        var dismissal: (@MainActor @Sendable () -> Void)?
+        var dispatched = 0
+        let sheet = DepositBottomSheetViewController(
+            balance: balance, notificationCenter: center,
+            scheduleSuccessDismissal: { _, action in dismissal = action },
+            purchaseProduct: { _ in dispatched += 1 }, offerProvider: offer
+        )
+        let host = try mount(sheet)
+        let tap: (Int) throws -> Void = { count in
+            let purchase = try self.button(in: sheet, id: "deposit.purchaseButton")
+            purchase.sendActions(for: .touchUpInside)
+            XCTAssertEqual(dispatched, count, "Tap \(count) dispatched its purchase")
+            XCTAssertFalse(purchase.isEnabled, "Tap \(count) is in flight")
+        }
+        let cancel = { center.post(name: StoreKitService.purchaseCancelledNotification, object: nil) }
+
+        XCTAssertEqual(postCompletion(on: center), [notStartedLine], "Idle: another screen's purchase")
+        XCTAssertNil(dismissal)
+        try tap(1)
+        cancel()
+        XCTAssertEqual(postCompletion(on: center), [notStartedLine], "Cancelled: nothing of this sheet's is left")
+        XCTAssertNil(dismissal)
+        XCTAssertNil(try label(in: sheet, id: "deposit.successAmount").text)
+
+        try tap(2)
+        center.post(name: StoreKitService.purchasePendingNotification, object: nil)
+        _ = try presentedAlert(on: sheet, after: StoreKitService.purchasePendingNotification)
+        cancel()  // Another screen's: this sheet has no tap in flight while it waits.
+        sheet.dismiss(animated: false)
+        XCTAssertTrue(spin { sheet.presentedViewController == nil }, "The user answers the notice")
+        try tap(3)
+        cancel()
+        XCTAssertEqual(postCompletion(on: center), [], "The approval of the pending purchase is this sheet's")
+        try XCTUnwrap(dismissal, "The approval of the pending purchase is this sheet's")()
+        XCTAssertNotNil(try label(in: sheet, id: "deposit.successAmount").text)
+        XCTAssertTrue(spin { host.presentedViewController == nil }, presentationDiagnostics(rootedAt: host))
+    }
+
+    /// The failure observer is not gated, so a failure can reach a sheet that
+    /// already shows its pending notice. UIKit refuses that second alert; were it
+    /// recorded as `ownAlert`, the approval's dismissal would skip and leave the
+    /// sheet in success behind its own notice. Both close, as in #1189.
+    func testFailureOverTheDepositSheetsNoticeLeavesTheNoticeItsOwn() throws {
         let center = NotificationCenter()
         let balance = BalanceService(defaults: makeIsolatedDefaults(), notificationCenter: center)
         var dismissal: (@MainActor @Sendable () -> Void)?
@@ -140,32 +189,23 @@ final class TopUpSuccessDismissalTests: XCTestCase {
             purchaseProduct: { _ in }, offerProvider: offer
         )
         let host = try mount(sheet)
-        let tap = { try self.button(in: sheet, id: "deposit.purchaseButton").sendActions(for: .touchUpInside) }
-        let complete = {
-            center.post(name: StoreKitService.purchaseCompletedNotification, object: nil,
-                        userInfo: [StoreKitService.amountUserInfoKey: 149.0])
-        }
-        complete()
-        XCTAssertNil(dismissal, "Idle: another screen's purchase")
-        try tap()
-        center.post(name: StoreKitService.purchaseCancelledNotification, object: nil)
-        complete()
-        XCTAssertNil(dismissal, "Cancelled: nothing of this sheet's is left to complete")
-        XCTAssertNil(try label(in: sheet, id: "deposit.successAmount").text)
-
-        try tap()
+        try button(in: sheet, id: "deposit.purchaseButton").sendActions(for: .touchUpInside)
         center.post(name: StoreKitService.purchasePendingNotification, object: nil)
-        _ = try presentedAlert(on: sheet, after: StoreKitService.purchasePendingNotification)
-        try tap()
-        center.post(name: StoreKitService.purchaseCancelledNotification, object: nil)
-        complete()
-        try XCTUnwrap(dismissal, "The approval of the pending purchase is this sheet's")()
-        XCTAssertNotNil(try label(in: sheet, id: "deposit.successAmount").text)
+        let notice = try presentedAlert(on: sheet, after: StoreKitService.purchasePendingNotification)
+        let refused = uiErrors { center.post(name: StoreKitService.purchaseFailedNotification, object: nil) }
+        XCTAssertEqual(refused, ["DepositSheet: alert not shown, UIAlertController is presented"])
+        XCTAssertTrue(sheet.presentedViewController === notice, presentationDiagnostics(rootedAt: host))
+
+        XCTAssertEqual(postCompletion(on: center), [])
+        try XCTUnwrap(dismissal)()
         XCTAssertTrue(spin { host.presentedViewController == nil }, presentationDiagnostics(rootedAt: host))
+        XCTAssertNil(notice.presentingViewController)
     }
 
-    /// The sheet's own success, then an alarm fires over it within the 2 s: the
-    /// dismissal skips, says so, and the screen above stays up.
+    /// The sheet's own success, then a full-screen controller goes over it
+    /// within the 2 s. Over the deposit sheet that is an alarm's firing screen;
+    /// over the firing sheet it stands for any other cover. The dismissal skips,
+    /// says so, and the controller above stays up.
     func testScreenPresentedOverEitherSheetInItsSuccessWindowSurvivesTheDismissal() throws {
         for firing in [false, true] {
             let center = NotificationCenter()
@@ -183,22 +223,18 @@ final class TopUpSuccessDismissalTests: XCTestCase {
             let name = "\(type(of: sheet))"
             try button(in: sheet, id: firing ? "firingTopUp.purchaseButton" : "deposit.purchaseButton")
                 .sendActions(for: .touchUpInside)
-            center.post(name: StoreKitService.purchaseCompletedNotification, object: nil,
-                        userInfo: [StoreKitService.amountUserInfoKey: 149.0])
+            XCTAssertEqual(postCompletion(on: center), [], name)
             let dismiss = try XCTUnwrap(dismissal, name)
-            let alarmScreen = coverScreen()
-            present(alarmScreen, on: sheet)
+            let cover = coverScreen()
+            present(cover, on: sheet)
 
-            var lines: [String] = []
-            AppLogger.withTestSink({ category, level, message in
-                if category == .ui, level == .error { lines.append(message) }
-            }, perform: { dismiss() })
-            XCTAssertEqual(lines, ["\(name): success dismissal skipped, UIViewController is presented above it"])
+            XCTAssertEqual(uiErrors { dismiss() },
+                           ["\(name): success dismissal skipped, UIViewController is presented above it"])
             // A dismissal sent marks both at once (main fails here); nothing queued sends one later.
-            XCTAssertFalse(alarmScreen.isBeingDismissed, name)
+            XCTAssertFalse(cover.isBeingDismissed, name)
             XCTAssertFalse(sheet.isBeingDismissed, name)
             drainMainQueue()
-            XCTAssertTrue(alarmScreen.presentingViewController === sheet, presentationDiagnostics(rootedAt: host))
+            XCTAssertTrue(cover.presentingViewController === sheet, presentationDiagnostics(rootedAt: host))
             XCTAssertTrue(host.presentedViewController === sheet, presentationDiagnostics(rootedAt: host))
         }
     }
@@ -222,16 +258,11 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         let notice = try presentedAlert(on: sheet, after: StoreKitService.purchasePendingNotification)
         let alarmScreen = coverScreen()
         present(alarmScreen, on: notice)
-        center.post(name: StoreKitService.purchaseCompletedNotification, object: nil,
-                    userInfo: [StoreKitService.amountUserInfoKey: 149.0])
+        XCTAssertEqual(postCompletion(on: center), [])
         let dismiss = try XCTUnwrap(dismissal)
 
-        var lines: [String] = []
-        AppLogger.withTestSink({ category, level, message in
-            if category == .ui, level == .error { lines.append(message) }
-        }, perform: { dismiss() })
-        XCTAssertEqual(lines, ["DepositBottomSheetViewController: success dismissal skipped, "
-                               + "UIViewController is presented above it"])
+        XCTAssertEqual(uiErrors { dismiss() }, ["DepositBottomSheetViewController: success dismissal skipped, "
+                                               + "UIAlertController is presented above it"])
         XCTAssertFalse(alarmScreen.isBeingDismissed)
         XCTAssertFalse(notice.isBeingDismissed)
         XCTAssertFalse(sheet.isBeingDismissed)
@@ -309,6 +340,30 @@ final class TopUpSuccessDismissalTests: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         return condition()
+    }
+
+    /// The deposit sheet's line for a completion it did not start (#1190).
+    private let notStartedLine = "DepositSheet: completion of a purchase it did not start, ignoring"
+
+    /// Posts a 149 ₽ completion and returns the `.storeKit` lines `emit` wrote while it was delivered.
+    private func postCompletion(on center: NotificationCenter) -> [String] {
+        var lines: [String] = []
+        AppLogger.withTestSink({ category, _, message in
+            if category == .storeKit { lines.append(message) }
+        }, perform: {
+            center.post(name: StoreKitService.purchaseCompletedNotification, object: nil,
+                        userInfo: [StoreKitService.amountUserInfoKey: 149.0])
+        })
+        return lines
+    }
+
+    /// The `.ui` error lines `emit` wrote during `action`.
+    private func uiErrors(during action: () -> Void) -> [String] {
+        var lines: [String] = []
+        AppLogger.withTestSink({ category, level, message in
+            if category == .ui, level == .error { lines.append(message) }
+        }, perform: action)
+        return lines
     }
 
     private func button(in sheet: UIViewController, id: String) throws -> SPButton {
