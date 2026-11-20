@@ -116,6 +116,9 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     /// Flips when StoreKit reports a successful credit. Drives the success
     /// state UI swap + the 2-second auto-dismiss timer.
     private var successReceipt: TopUpSuccessReceipt?
+    /// The failure alert or pending notice this sheet presented, the only thing
+    /// its success dismissal may close along with it (#1190).
+    private weak var ownAlert: UIAlertController?
 
     /// Original auto-resume timeout timer (60s). Cleared when the pause ends;
     /// an attempted interactive dismissal must not replace its deadline.
@@ -808,12 +811,12 @@ extension FiringTopUpBottomSheetViewController {
 
         endPauseTimers()
 
-        // Through the presenter (#1189): `dismiss` on a sheet that still shows
-        // the pending notice or a failure alert closes only that alert, and
-        // the paused alarm stays behind the success state.
+        // Through the presenter over this sheet's own alert (#1189): `dismiss`
+        // on the sheet would close only that alert. Never over a screen
+        // presented above it within the 2 s (#1190).
         scheduleSuccessDismissal(2) { [weak self] in
             guard let self else { return }
-            (self.presentingViewController ?? self).dismiss(animated: true)
+            self.dismissTopUpSheetAfterSuccess(ownAlert: self.ownAlert)
         }
     }
 
@@ -845,6 +848,7 @@ extension FiringTopUpBottomSheetViewController {
             alert.dismiss(animated: true) { [weak self] in self?.acknowledgePurchaseFailure() }
         }
         alert.addAction(acknowledge)
+        ownAlert = alert
         if let presentPurchaseFailure {
             presentPurchaseFailure(alert)
         } else {
