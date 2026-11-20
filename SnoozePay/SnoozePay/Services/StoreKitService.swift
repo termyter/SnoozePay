@@ -58,6 +58,10 @@ final class StoreKitService {
     /// / record failed). Surfaced as a constant so tests can assert without
     /// hard-coding the same Russian string in two places. See #115.
     ///
+    /// Post-charge only. The pre-purchase gate refuses an unreadable ledger
+    /// with `ForeignCurrencyNotice.ledgerUnreadableMessage`, because there
+    /// nothing has been charged yet (#1182).
+    ///
     /// Computed rather than stored, like its two neighbours — for a narrower
     /// reason than it looks. A stored `static let` caches its first lookup for
     /// the lifetime of the process, which is a second cache in front of the one

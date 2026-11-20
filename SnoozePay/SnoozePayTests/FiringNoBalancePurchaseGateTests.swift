@@ -177,7 +177,8 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
         // No XCTUnwrap: a throw would end a caller's loop before its next case.
         let alert = fixture.controller.alerts.first
         XCTAssertEqual(fixture.controller.alerts.count, 1, label)
-        XCTAssertEqual(alert?.message, StoreKitService.ledgerLockedFailureMessage, label)
+        XCTAssertEqual(alert?.message, ForeignCurrencyNotice.ledgerUnreadableMessage, label)
+        XCTAssertNotEqual(alert?.message, StoreKitService.ledgerLockedFailureMessage, "Nothing was charged — \(label)")
         XCTAssertEqual(alert?.title, Localized.text("firing.alert.purchase_failed.title"), label)
         XCTAssertNotEqual(alert?.title, ForeignCurrencyNotice.alertTitle, label)
         XCTAssertTrue(fixture.controller.applePayNoBalanceButton?.isEnabled == true,

@@ -7,6 +7,9 @@ import XCTest
 /// the wallet non-pristine, so the currency check alone refused a first
 /// foreign purchase with the currency notice and the user went after the wrong
 /// problem. A readable wallet keeps its currency rules; roubles are untouched.
+///
+/// #1182: the gate runs before StoreKit, so its copy says nothing was charged.
+/// The post-charge "couldn't credit" copy stays with the credit path.
 @MainActor
 final class PurchaseGateLockedLedgerTests: XCTestCase {
 
@@ -49,7 +52,29 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
 
         XCTAssertEqual(service.purchaseRefusal(in: usd), .ledgerUnreadable)
         XCTAssertEqual(ForeignCurrencyNotice.blockingMessage(for: service.purchaseRefusal(in: usd)),
-                       StoreKitService.ledgerLockedFailureMessage)
+                       ForeignCurrencyNotice.ledgerUnreadableMessage)
+    }
+
+    /// The refusal reads its own entry, in both shipped languages, and is not
+    /// the post-charge credit failure — which keeps its own words.
+    func testLockedLedgerRefusal_saysNothingWasCharged_notThatTheCreditFailed() throws {
+        let refusal = ForeignCurrencyNotice.blockingMessage(for: .ledgerUnreadable)
+        XCTAssertEqual(refusal, Localized.text("deposit.error.ledger_unreadable"))
+        XCTAssertNotEqual(refusal, StoreKitService.ledgerLockedFailureMessage)
+        XCTAssertEqual(StoreKitService.ledgerLockedFailureMessage, Localized.text("deposit.error.credit_failed"),
+                       "The post-charge copy is unchanged")
+
+        let copy = [
+            ("ru", "Пополнение приостановлено: не удалось прочитать данные баланса. "
+                + "За эту покупку деньги не списаны. Свяжитесь с поддержкой."),
+            ("en", "Top-ups are paused: your balance data couldn’t be read. "
+                + "You weren’t charged for this purchase. Contact support.")
+        ]
+        for (language, expected) in copy {
+            let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"), language)
+            let bundle = try XCTUnwrap(Bundle(path: path), language)
+            XCTAssertEqual(Localized.text("deposit.error.ledger_unreadable", in: bundle), expected, language)
+        }
     }
 
     /// An established wallet refuses other currencies without looking at the
@@ -132,7 +157,8 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
 
         XCTAssertTrue(requested.isEmpty)
         XCTAssertEqual(alerts.count, 1)
-        XCTAssertEqual(alerts.first?.message, StoreKitService.ledgerLockedFailureMessage)
+        XCTAssertEqual(alerts.first?.message, ForeignCurrencyNotice.ledgerUnreadableMessage)
+        XCTAssertNotEqual(alerts.first?.message, StoreKitService.ledgerLockedFailureMessage, "Nothing was charged")
         XCTAssertEqual(alerts.first?.title, Localized.text("firing.alert.purchase_failed.title"))
         XCTAssertNotEqual(alerts.first?.title, ForeignCurrencyNotice.alertTitle)
     }
@@ -149,7 +175,8 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
         XCTAssertTrue(requested.isEmpty)
         let alert = try XCTUnwrap(sheet.presentedViewController as? UIAlertController,
                                   presentationDiagnostics(rootedAt: sheet))
-        XCTAssertEqual(alert.message, StoreKitService.ledgerLockedFailureMessage)
+        XCTAssertEqual(alert.message, ForeignCurrencyNotice.ledgerUnreadableMessage)
+        XCTAssertNotEqual(alert.message, StoreKitService.ledgerLockedFailureMessage, "Nothing was charged")
         XCTAssertEqual(alert.title, Localized.text("common.purchase_failed.title"))
         XCTAssertTrue(try button(in: sheet, id: "deposit.purchaseButton").isEnabled,
                       "The refusal is not a stuck purchase")
@@ -170,7 +197,7 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
                 XCTAssertTrue(requested.isEmpty, "A locked ledger must not be charged for")
                 let alert = try XCTUnwrap(sheet.presentedViewController as? UIAlertController,
                                           presentationDiagnostics(rootedAt: sheet))
-                XCTAssertEqual(alert.message, StoreKitService.ledgerLockedFailureMessage)
+                XCTAssertEqual(alert.message, ForeignCurrencyNotice.ledgerUnreadableMessage)
             }
             unmount()
         }
@@ -222,7 +249,7 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
         try button(in: sheet, id: "firingTopUp.purchaseButton").sendActions(for: .touchUpInside)
 
         XCTAssertTrue(requested.isEmpty, code)
-        XCTAssertEqual(alerts.first?.message, StoreKitService.ledgerLockedFailureMessage, code)
+        XCTAssertEqual(alerts.first?.message, ForeignCurrencyNotice.ledgerUnreadableMessage, code)
     }
 
     // MARK: - Helpers
