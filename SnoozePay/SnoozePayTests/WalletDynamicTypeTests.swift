@@ -638,6 +638,13 @@ final class WalletDynamicTypeTests: XCTestCase {
             button.frame.width, button.intrinsicContentSize.width, accuracy: 0.01,
             "\(name): «Пополнить» was squeezed", file: file, line: line
         )
+        // Who gives way is decided by priority. Without it the frames above
+        // stay right today only because the engine breaks the 750/750 tie
+        // the button's way (mutation-checked); that is not a guarantee.
+        XCTAssertLessThan(
+            title.contentCompressionResistancePriority(for: .horizontal),
+            button.contentCompressionResistancePriority(for: .horizontal), "\(name): a tie", file: file, line: line
+        )
         let buttonTitle = try label(Localized.text("common.button.top_up"), in: button)
         XCTAssertLessThanOrEqual(
             naturalWidth(of: buttonTitle), buttonTitle.bounds.width + 0.5, "\(name): «Пополнить» is cut",
