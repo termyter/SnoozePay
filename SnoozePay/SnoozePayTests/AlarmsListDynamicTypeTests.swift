@@ -120,6 +120,7 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
             XCTAssertGreaterThan(try drawnPointSize(of: clock), AppTypography.clockLg.pointSize, "\(time) drawn")
             XCTAssertLessThanOrEqual(toggle.maxX, surface.bounds.maxX, "toggle left the card")
             let pills = descendants(of: SPPill.self, in: cell).map { $0.convert($0.bounds, to: surface) }
+            XCTAssertEqual(pills.count, 3, "\(time)")
             for pill in pills {
                 XCTAssertLessThanOrEqual(
                     pill.maxX, surface.bounds.maxX - AppSpacing.sp5 + 0.5, "pill \(pill) overflows"
@@ -204,13 +205,14 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
 
     /// XL–XXXL: the text grows but is not an accessibility size. On the
     /// narrowest phone the pill row no longer fits, so the pills stack and no
-    /// pill wraps mid-word — with the longest real sound names and a 4-digit price.
+    /// pill wraps mid-word — with long real sound names (the longest,
+    /// "Bach's Badinerie", included) and a 4-digit price as the app formats it.
     func testFromXLThePillsStackAndNothingIsSqueezed() throws {
         for category in [UIContentSizeCategory.extraLarge, .extraExtraLarge, .extraExtraExtraLarge] {
-            for sound in ["Размышление", "Своя мелодия", "Колокольчик"] {
+            for sound in ["Bach's Badinerie", "Размышление", "Своя мелодия"] {
                 let cell = AlarmCell(style: .default, reuseIdentifier: nil)
                 cell.configure(
-                    time: "07:00", daysCaps: caps, priceText: "1 000 ₽", priceCurrency: .rub,
+                    time: "07:00", daysCaps: caps, priceText: MoneyFormatter.string(1000), priceCurrency: .rub,
                     multiplier: "×2", soundName: sound, enabled: true
                 )
                 override(cell, to: category)
@@ -227,12 +229,30 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
         }
     }
 
+    /// No real sound name wraps on a 375pt phone, so this one is made up: from
+    /// XL a pill whose text needs two lines grows instead of clipping it.
+    func testFromXLAnOverLongPillWrapsAndGrows() throws {
+        let sound = "Badinerie from the Orchestral Suite No. 2 in B minor"
+        for category in [UIContentSizeCategory.extraLarge, Self.ax5] {
+            let cell = card(category, time: "07:00", sound: sound)
+            let pill = try XCTUnwrap(
+                descendants(of: SPPill.self, in: cell).first { pill in
+                    descendants(of: UILabel.self, in: pill).contains {
+                        $0.attributedText?.string.contains("Badinerie") == true
+                    }
+                }
+            )
+            XCTAssertGreaterThan(pill.bounds.height, 26 + 1, "\(category.rawValue): the pill did not grow")
+            assertNothingClipped(in: cell)
+        }
+    }
+
     /// At the default size long content still truncates on one line inside
     /// today's 26pt pills, as before #1111 — no pill wraps and grows.
     func testAtTheDefaultSizeLongPillContentStaysOneLine() throws {
         let cell = AlarmCell(style: .default, reuseIdentifier: nil)
         cell.configure(
-            time: "07:00", daysCaps: caps, priceText: "1 000 000 ₽", priceCurrency: .rub,
+            time: "07:00", daysCaps: caps, priceText: MoneyFormatter.string(1_000_000), priceCurrency: .rub,
             multiplier: "×2", soundName: "Bach's Badinerie", enabled: true
         )
         override(cell, to: .large)
@@ -304,6 +324,28 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
         XCTAssertGreaterThan(grown.frame.height, regular.frame.height, "the header did not grow")
     }
 
+    /// Back from a stacked size, the header swaps its row layout back in:
+    /// today's height and the amount beside «БАЛАНС» again.
+    func testAStackedHeaderReturnsToTodaysRowOnALiveChange() throws {
+        for category in [UIContentSizeCategory.extraLarge, Self.ax5] {
+            let view = header(category)
+            override(view, to: .large)
+            view.frame.size.height = fitted(view, width: wide)
+            view.layoutIfNeeded()
+            let caps = try label(Localized.text("common.caps.balance"), in: view)
+            let amount = try amountLabel(in: view)
+            XCTAssertEqual(view.frame.height, todaysHeaderHeight, accuracy: 0.01, category.rawValue)
+            XCTAssertEqual(caps.frame.minY, 12, accuracy: 0.01, category.rawValue)
+            XCTAssertEqual(
+                amount.frame.minX, caps.frame.maxX + AppSpacing.sp2, accuracy: 0.01,
+                "\(category.rawValue): the amount stayed under the caps"
+            )
+            XCTAssertEqual(
+                amount.convert(amount.bounds, to: view).minY, 73 + 2.0 / 3, accuracy: 0.01, category.rawValue
+            )
+        }
+    }
+
     /// Geometry of the balance pill measured on main (0928c768) for a header
     /// whose balance is set before it reaches a window — the app's cold start.
     /// The amount and the hint used to share the pill's slack arbitrarily, and
@@ -356,7 +398,9 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
                     descendants(of: UILabel.self, in: view).first { $0.attributedText?.string.hasPrefix("12") == true }
                 )
                 let hintLabel = try label(hint, in: view)
-                let button = try XCTUnwrap(descendants(of: SPButton.self, in: view).first)
+                let buttons = descendants(of: SPButton.self, in: view)
+                XCTAssertEqual(buttons.count, 1, "\(name): the top-up button is not the only SPButton")
+                let button = try XCTUnwrap(buttons.first)
                 let frame = { (sub: UIView) in sub.convert(sub.bounds, to: view) }
                 XCTAssertGreaterThanOrEqual(frame(amount).minY, frame(caps).maxY, "\(name): amount beside the caps")
                 XCTAssertGreaterThanOrEqual(
@@ -402,6 +446,11 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
         let button = try XCTUnwrap(descendants(of: SPButton.self, in: grown).first)
         XCTAssertGreaterThan(scroll.contentSize.height, scroll.bounds.height, "the grown column cannot scroll")
         XCTAssertLessThanOrEqual(button.convert(button.bounds, to: scroll).maxY, scroll.contentSize.height)
+        // The CTA highlights on touch-down, yet a pan that starts on it still
+        // scrolls instead of staying with the button and ending as a tap.
+        XCTAssertFalse(scroll.delaysContentTouches)
+        XCTAssertTrue(scroll.canCancelContentTouches)
+        XCTAssertTrue(scroll.touchesShouldCancel(in: button), "a drag from the CTA does not scroll")
         let regularScroll = try XCTUnwrap(descendants(of: UIScrollView.self, in: regular).first)
         XCTAssertEqual(regularScroll.contentSize.height, regularScroll.bounds.height, accuracy: 0.01)
         XCTAssertEqual(
@@ -509,7 +558,9 @@ final class AlarmsListDynamicTypeTests: XCTestCase {
     private func widestWord(of label: UILabel) -> CGFloat {
         guard let text = label.attributedText, text.length > 0 else { return 0 }
         let attributes = text.attributes(at: 0, effectiveRange: nil)
-        return text.string.split(whereSeparator: \.isWhitespace).map { word in
+        // Only where UIKit may break a line: the price's U+202F and U+00A0
+        // keep "1 000 ₽" one unbreakable word.
+        return text.string.split(whereSeparator: { $0 == " " || $0.isNewline }).map { word in
             NSAttributedString(string: String(word), attributes: attributes).size().width
         }.max() ?? 0
     }

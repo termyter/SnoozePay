@@ -256,6 +256,10 @@ final class SPAlarmsListHeader: UIView {
         // tight, the shrink-to-fit amount gives way and «БАЛАНС» stays whole.
         label.numberOfLines = 1
         label.setContentCompressionResistancePriority(UILayoutPriority(751), for: .horizontal)
+        // Above the stacked layout's 750 "hint under the amount": when the
+        // top-up button pushes the hint down, the hint drops and leaves a gap
+        // instead of «БАЛАНС» stretching and dragging the amount with it.
+        label.setContentHuggingPriority(UILayoutPriority(751), for: .vertical)
         return label
     }()
 
@@ -283,7 +287,9 @@ final class SPAlarmsListHeader: UIView {
         // amount and the hint would share the slack arbitrarily: the solver's
         // pick depended on constraint activation order and moved the amount
         // 1.7pt down on a cold start (#1111). The amount hugs; the hint takes it.
-        label.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        // 751, not 750: in the stacked layout it must also beat "hint under
+        // the amount" (750) if the button ever pushes the hint down.
+        label.setContentHuggingPriority(UILayoutPriority(751), for: .vertical)
         return label
     }()
 
@@ -327,7 +333,8 @@ final class SPAlarmsListHeader: UIView {
     /// centred, the one-line hint in the column left of the button.
     /// From XL up (`AppTypography.stacksDenseRows`) that row no longer fits a
     /// 375pt phone: the amount drops under «БАЛАНС», the button moves to the
-    /// top, and the hint wraps across the full width below it (#1111).
+    /// top, and the hint wraps below it, out to the pill's trailing edge
+    /// instead of stopping at the button (#1111).
     private var rowLayout: [NSLayoutConstraint] = []
     private var stackedLayout: [NSLayoutConstraint] = []
 

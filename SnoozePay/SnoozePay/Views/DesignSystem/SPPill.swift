@@ -150,7 +150,8 @@ final class SPPill: UIView {
     /// the 16.7pt label plus 4pt insets still fits 26pt; from XL, where the
     /// card stacks its pills, it wraps. Every other pill keeps the fixed
     /// recipe until the design-system controls get their own slice.
-    /// Covers `setText`; a `setBalance` render stays fixed and is left alone.
+    /// Covers `setText`; a `setBalance` render stays fixed and is left alone,
+    /// whether it came before or after this call.
     func scalesWithContentSize() {
         guard !scalesText else { return }
         scalesText = true
@@ -171,7 +172,9 @@ final class SPPill: UIView {
             guard !pill.rendersBalance else { return }
             pill.setText(pill.text)
         }
-        setText(text)
+        if !rendersBalance {
+            setText(text)
+        }
     }
 
     /// Two-tier balance variant — a muted caps label segment («Баланс») next

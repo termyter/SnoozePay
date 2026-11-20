@@ -97,7 +97,7 @@ final class SPAlarmsListEmptyState: UIView {
     /// is at least the overlay's height, so the column is centred exactly as
     /// before whenever it fits.
     private let scrollView: UIScrollView = {
-        let view = UIScrollView()
+        let view = ControlPanningScrollView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentInsetAdjustmentBehavior = .never
         view.alwaysBounceVertical = false
@@ -106,6 +106,16 @@ final class SPAlarmsListEmptyState: UIView {
         view.delaysContentTouches = false
         return view
     }()
+
+    /// Without the touch delay a drag that starts on the CTA would stay with
+    /// the button — `UIScrollView` does not cancel a `UIControl`'s touches by
+    /// default — so the column could not be scrolled from it, and a short
+    /// flick could end as a tap that creates an alarm. A pan wins instead.
+    private final class ControlPanningScrollView: UIScrollView {
+        override func touchesShouldCancel(in view: UIView) -> Bool {
+            view is UIControl || super.touchesShouldCancel(in: view)
+        }
+    }
 
     private let content: UIView = {
         let view = UIView()
