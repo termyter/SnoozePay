@@ -59,6 +59,9 @@ final class SPBalanceCard: UIView {
                 view.refreshDynamicColors()
             }
         }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SPBalanceCard, _) in
+            view.renderText()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -161,31 +164,57 @@ final class SPBalanceCard: UIView {
         self.currency = currency
         self.delta = delta
         self.hint = hint
-        // fmtRub rule: mono digits, proportional ~4pt gap before ₽ — the
-        // attributed variant re-fonts the separator so it escapes the mono
-        // advance grid (a plain string would render a full-cell space).
-        valueLabel.attributedText = MoneyFormatter.attributed(
-            balance,
-            currency: currency,
-            digitsFont: AppTypography.moneyXl
-        )
         // Crossing zero changes the tone, not just the digits — the ink and
         // the corner highlight have to follow the new value.
         valueLabel.setGradientColors(valueColors(for: traitCollection))
         radialOverlay.isZeroBalance = isZeroBalance
-        if let delta = delta {
-            deltaLabel.isHidden = false
-            deltaLabel.attributedText = renderDelta(delta)
-        } else {
-            deltaLabel.isHidden = true
-        }
-        if let hint = hint {
-            hintLabel.text = hint
-            hintLabel.isHidden = false
-        } else {
-            hintLabel.isHidden = true
-        }
+        deltaLabel.isHidden = delta == nil
+        hintLabel.text = hint
+        hintLabel.isHidden = hint == nil
+        renderText()
         setNeedsLayout()
+    }
+
+    /// Render every label at the card's content size category (#1111). Each
+    /// role is its fixed font at the default `.large`, so the card is
+    /// unchanged there. Runs from `update` and on a category change.
+    private func renderText() {
+        let traits = traitCollection
+        let capsFont = AppTypography.scaledCaps(compatibleWith: traits)
+        capsLabel.attributedText = NSAttributedString(
+            string: Localized.text("common.caps.balance"),
+            attributes: [
+                .font: capsFont,
+                .kern: AppTypography.kerning(AppTypography.capsKerning, of: AppTypography.caps, scaledTo: capsFont),
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        // The hero grows on the `.largeTitle` curve, like the other big
+        // display roles. One line always: a long amount shrinks to fit, but
+        // never below today's floor (0.75 × 56pt = 42pt), so the widest
+        // balance that fits today still fits at every size.
+        let valueFont = AppTypography.scaled(AppTypography.moneyXl, as: .largeTitle, compatibleWith: traits)
+        valueLabel.font = valueFont
+        valueLabel.minimumScaleFactor = min(1, Self.valueFloorPointSize / valueFont.pointSize)
+        // fmtRub rule: mono digits, proportional ~4pt gap before ₽ — the
+        // attributed variant re-fonts the separator so it escapes the mono
+        // advance grid (a plain string would render a full-cell space).
+        valueLabel.attributedText = MoneyFormatter.attributed(balance, currency: currency, digitsFont: valueFont)
+        if let delta {
+            deltaLabel.attributedText = renderDelta(delta, font: deltaFont(for: traits))
+        }
+        hintLabel.font = AppTypography.scaled(AppTypography.meta, as: .footnote, compatibleWith: traits)
+        // One line below XL, as before; from XL they wrap between words. The
+        // amount inside the delta is joined by no-break spaces, so it never
+        // splits mid-number.
+        let wraps = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory)
+        deltaLabel.numberOfLines = wraps ? 0 : 1
+        hintLabel.numberOfLines = wraps ? 0 : 1
+    }
+
+    /// `moneySm` (14pt) scaled as `.subheadline`, like the alarms-list amount.
+    private func deltaFont(for traits: UITraitCollection) -> UIFont {
+        AppTypography.scaled(AppTypography.moneySm, as: .subheadline, compatibleWith: traits)
     }
 
     // MARK: - Configuration
@@ -204,20 +233,15 @@ final class SPBalanceCard: UIView {
         addSubview(radialOverlay)
 
         capsLabel.translatesAutoresizingMaskIntoConstraints = false
-        capsLabel.attributedText = NSAttributedString(
-            string: Localized.text("common.caps.balance"),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
+        // «БАЛАНС» is one word: never wraps (text set in `renderText`).
+        capsLabel.numberOfLines = 1
 
         valueLabel.translatesAutoresizingMaskIntoConstraints = false
         // Hero balance uses `moneyXl` (56pt mono bold) per `tokens.css` L168
         // — `--sp-t-money-xl: 700 56px/60px var(--sp-font-mono)`. The bigger
         // glyphs can overflow on narrow devices for large balances
-        // ("1 234 567 ₽"), so we let UIKit shrink to 75% before clipping.
+        // ("1 234 567 ₽"), so we let UIKit shrink to 75% before clipping
+        // (`renderText` scales the font and keeps that 42pt floor).
         valueLabel.font = AppTypography.moneyXl
         // The gradient label keeps this fallback until its own layout pass has
         // resolved the glyph bounds, then replaces it with a masked layer.
@@ -271,6 +295,10 @@ final class SPBalanceCard: UIView {
     /// `components.css`, likewise between two grid steps.
     private static let deltaToHintGap = AppSpacing.sp3 + AppSpacing.sp1 / 2
 
+    /// Smallest size the hero number is ever drawn at: today's 0.75 shrink of
+    /// 56pt. Grown sizes lower the scale factor so the floor stays 42pt.
+    static let valueFloorPointSize = AppTypography.moneyXl.pointSize * 0.75
+
     // MARK: - Auto-shrink mask alignment
 
     /// Compute the scale factor `adjustsFontSizeToFitWidth` would apply to fit
@@ -312,7 +340,7 @@ final class SPBalanceCard: UIView {
         }
     }
 
-    private func renderDelta(_ delta: Decimal) -> NSAttributedString {
+    private func renderDelta(_ delta: Decimal, font: UIFont) -> NSAttributedString {
         let arrow = delta < 0 ? "↓" : "↑"
         let abs = NSDecimalNumber(decimal: delta < 0 ? -delta : delta).decimalValue
         let str = Localized.format("wallet.balance.delta_week", arrow, MoneyFormatter.string(abs, currency: currency))
@@ -320,7 +348,7 @@ final class SPBalanceCard: UIView {
         return NSAttributedString(
             string: str,
             attributes: [
-                .font: AppTypography.moneySm,
+                .font: font,
                 .foregroundColor: color
             ]
         )
