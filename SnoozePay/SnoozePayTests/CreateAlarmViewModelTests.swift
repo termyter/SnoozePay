@@ -64,7 +64,10 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
     // MARK: - Default values
 
     func testDefaultValues_areCorrect() {
-        let vm = CreateAlarmViewModel(repository: repo)
+        // A new alarm seeds from the global defaults. Over this test's empty suite
+        // they are the factory fallbacks; the default `.shared` read the host's
+        // `.standard`, and a used simulator gave 200 ₽ and 5 min (#1187).
+        let vm = CreateAlarmViewModel(repository: repo, defaults: AlarmDefaults(defaults: testDefaults))
 
         // New alarms seed an empty name so the form shows the "Название"
         // placeholder (#231); the save path falls back to "Будильник".
@@ -206,8 +209,11 @@ final class CreateAlarmViewModelSoundTests: XCTestCase {
         // Toggling progressiveScale on the ViewModel must mirror through to a
         // saved alarm so the UI toggle on CreateAlarmViewController stays in
         // sync with persisted state. Regression guard for the toggle handler
-        // that previously crashed before the value could be saved.
-        let vm = CreateAlarmViewModel(repository: repo, backendMonitor: grantedMonitor())
+        // that previously crashed before the value could be saved. The starting
+        // `false` is the factory default, so the defaults come from the test's suite.
+        let vm = CreateAlarmViewModel(
+            repository: repo, defaults: AlarmDefaults(defaults: testDefaults), backendMonitor: grantedMonitor()
+        )
         XCTAssertFalse(vm.progressiveScale)
 
         vm.progressiveScale = true

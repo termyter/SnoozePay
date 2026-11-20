@@ -332,6 +332,47 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         )
     }
 
+    // MARK: - Host stores (#1187)
+
+    /// `AlarmDefaults` and `ThemeService` own `default_penalty_amount`, `default_snooze_minutes`
+    /// and `preferred_theme`; over `UserDefaults.standard` they hand a test whatever a used
+    /// simulator holds. Exact per file, like `handRolled`. The one line left is the test-only
+    /// `CreateAlarmViewModel` shorthand, whose `defaults:` falls back to `.shared`.
+    private static let hostStores: [String: Int] = ["CreateAlarmViewModel+RoubleContext.swift": 1]
+
+    /// `.shared`, a parameter defaulting to it, the bare init, `defaults: .standard`. Blind to
+    /// a seam left at its production default: `CreateAlarmViewModel(repository:)` names no
+    /// store, and that is how all three suites in #1187 read the host.
+    private static func hostStoreSites(in text: String) -> Int {
+        let code = stripComments(text)
+        let pattern = try? NSRegularExpression(
+            pattern: #"\b(?:AlarmDefaults|ThemeService)\s*(?:=\s*)?\.\s*shared\b|\b(?:AlarmDefaults|ThemeService)"#
+                + #"\s*(?:\.init)?\s*\(\s*(?:\)|defaults\s*:\s*(?:UserDefaults\s*)?\.standard\b)"#
+        )
+        return pattern?.numberOfMatches(in: code, range: NSRange(code.startIndex..., in: code)) ?? 0
+    }
+
+    func testHostStoreRatchetCountsEverySpelling() {
+        let source = """
+            let one = AlarmDefaults(), two = AlarmDefaults.shared, three = ThemeService.init( )
+            let four = ThemeService(defaults: .standard), five = AlarmDefaults(defaults: UserDefaults.standard)
+            init(defaults: AlarmDefaults = .shared) {}
+            // let skipped = AlarmDefaults()
+            let none = AlarmDefaults(defaults: suite), alsoNone = AlarmDefaultsTests()
+            """
+        XCTAssertEqual(Self.hostStoreSites(in: source), 6)
+    }
+
+    /// The allowlist is not empty, so a scan that found no sources fails here too.
+    func testHostStoresOverStandardMatchTheAllowlist() throws {
+        let found = try Self.testSources().compactMapValues { text -> Int? in
+            let count = Self.hostStoreSites(in: text)
+            return count > 0 ? count : nil
+        }
+        XCTAssertEqual(found, Self.hostStores, "AlarmDefaults/ThemeService over .standard in a test: "
+            + "build it with init(defaults: makeIsolatedDefaults()) (#1187)")
+    }
+
     /// Every test source except the helper, read from the checkout this file
     /// was compiled from (`#filePath`; no subprocess on the simulator), the
     /// same technique as `AlarmEditorCopyTests.alarmSourceDirectory()`.

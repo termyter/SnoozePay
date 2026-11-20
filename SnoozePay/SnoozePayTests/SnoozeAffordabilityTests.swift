@@ -162,7 +162,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
 
         XCTAssertEqual(
             SnoozeAffordability.currentPrice(
-                alarms: alarms, defaults: AlarmDefaults(), context: .scale(.rouble)
+                alarms: alarms, defaults: AlarmDefaults(defaults: makeIsolatedDefaults()), context: .scale(.rouble)
             ) ?? .nan,
             100,
             accuracy: 0.0001
@@ -177,7 +177,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
 
         XCTAssertEqual(
             SnoozeAffordability.currentPrice(
-                alarms: alarms, defaults: AlarmDefaults(), context: .scale(.rouble)
+                alarms: alarms, defaults: AlarmDefaults(defaults: makeIsolatedDefaults()), context: .scale(.rouble)
             ) ?? .nan,
             50,
             accuracy: 0.0001
@@ -194,7 +194,7 @@ final class SnoozeAffordabilityTests: XCTestCase {
 
         XCTAssertEqual(
             SnoozeAffordability.currentPrice(
-                alarms: alarms, defaults: AlarmDefaults(), context: .scale(.rouble)
+                alarms: alarms, defaults: AlarmDefaults(defaults: makeIsolatedDefaults()), context: .scale(.rouble)
             ) ?? .nan,
             200,
             accuracy: 0.0001
