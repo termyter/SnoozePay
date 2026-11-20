@@ -145,6 +145,11 @@ final class StoreKitService {
     /// Seam for posting the deferred-purchase fallback notification (#45).
     private let notificationPoster: LocalNotificationPosting
 
+    /// Where a paid transaction's failure goes when no screen is mounted (#1204):
+    /// the banner needs a permission the app does not ask for since #472. `nil`
+    /// only in a test that does not inject one, so it cannot reach the host app.
+    private let criticalWarnings: CriticalWarningCenter?
+
     /// Backing store for the dedup table. Injected so tests can drive the
     /// conservative corruption path (#209) against an isolated suite instead of
     /// `.standard`; production uses `.standard`.
@@ -155,6 +160,7 @@ final class StoreKitService {
 
     private init() {
         self.notificationPoster = UNUserNotificationCenter.current()
+        self.criticalWarnings = .shared
         self.defaults = .standard
         self.priceScaleStore = .shared
         self.catalogueLoader = Self.loadStoreCatalogue
@@ -177,6 +183,7 @@ final class StoreKitService {
     init(
         notificationPoster: LocalNotificationPosting,
         defaults: UserDefaults = .standard,
+        criticalWarnings: CriticalWarningCenter? = nil,
         priceScaleStore: SnoozePriceScaleStore? = nil,
         startListener: Bool = false,
         catalogueLoader: CatalogueLoader? = nil,
@@ -184,6 +191,7 @@ final class StoreKitService {
         foregroundCenter: NotificationCenter? = nil
     ) {
         self.notificationPoster = notificationPoster
+        self.criticalWarnings = criticalWarnings
         self.defaults = defaults
         self.priceScaleStore = priceScaleStore ?? SnoozePriceScaleStore(defaults: defaults)
         self.catalogueLoader = catalogueLoader ?? Self.loadStoreCatalogue
@@ -375,7 +383,7 @@ final class StoreKitService {
                 AppLogger.storeKit.error(
                     "unknown productID \(transaction.productID, privacy: .public) tx=\(transaction.id, privacy: .private) — not finishing"
                 )
-                postPurchaseFailed(Localized.text("deposit.error.unknown_product"))
+                postPurchaseFailed(Localized.text("deposit.error.unknown_product"), transactionID: transaction.id)
                 return
             }
             await applyVerifiedPurchase(RestorableTopUp(transaction: transaction)) {
@@ -390,7 +398,7 @@ final class StoreKitService {
             AppLogger.storeKit.error(
                 "unverified tx=\(transaction.id, privacy: .private) productID=\(transaction.productID, privacy: .public) error=\(errDesc, privacy: .public)"
             )
-            postPurchaseFailed(Localized.text("deposit.error.verification_failed"))
+            postPurchaseFailed(Localized.text("deposit.error.verification_failed"), transactionID: transaction.id)
         }
     }
 
@@ -418,7 +426,7 @@ final class StoreKitService {
             AppLogger.storeKit.error(
                 "invalid paid metadata tx=\(transaction.transactionID, privacy: .private) — not crediting, not finishing"
             )
-            postPurchaseFailed(Self.ledgerLockedFailureMessage)
+            postPurchaseFailed(Self.ledgerLockedFailureMessage, transactionID: transaction.transactionID)
             return
         }
         switch isProcessed(transactionID: transaction.transactionID) {
@@ -426,7 +434,7 @@ final class StoreKitService {
             await finish()
             return
         case nil:
-            postPurchaseFailed(Self.degradedDedupFailureMessage)
+            postPurchaseFailed(Self.degradedDedupFailureMessage, transactionID: transaction.transactionID)
             return
         case false?:
             break
@@ -477,7 +485,7 @@ final class StoreKitService {
                 but wallet holds \(wallet.code, privacy: .public) — not crediting, not finishing
                 """
             )
-            postPurchaseFailed(Self.foreignCurrencyFailureMessage)
+            postPurchaseFailed(Self.foreignCurrencyFailureMessage, transactionID: transaction.transactionID)
 
         case .notRecorded:
             // Ledger locked / record() failed — money already collected by
@@ -490,10 +498,14 @@ final class StoreKitService {
                 pid=\(transaction.productID, privacy: .public) — not finishing
                 """
             )
-            postPurchaseFailed(Self.ledgerLockedFailureMessage)
+            postPurchaseFailed(Self.ledgerLockedFailureMessage, transactionID: transaction.transactionID)
         }
         return outcome
     }
+}
+
+// Outside the class body only to keep it under `type_body_length` (#1204).
+extension StoreKitService {
 
     // MARK: - Notification posting helpers
 
@@ -528,10 +540,22 @@ final class StoreKitService {
 
     /// `internal` for the same reason as `postPurchaseCompleted` — testable
     /// no-subscriber fallback (#45). Not public.
-    func postPurchaseFailed(_ message: String) {
+    ///
+    /// `transactionID` names the paid transaction a failure is about: Apple has
+    /// charged, or may have, and the balance is not credited. With no screen
+    /// mounted such a failure is also kept as a critical warning until OK
+    /// (#1204): the banner needs a permission the app does not ask for (#472).
+    /// The banner is still tried, as #871 does. A failure with no transaction
+    /// stays banner-only: a catalogue load or a thrown purchase charged nothing,
+    /// and a foreground purchase that failed verification stays unfinished and
+    /// replays through `Transaction.updates`, which names it.
+    func postPurchaseFailed(_ message: String, transactionID: UInt64? = nil) {
         // Same rationale as `postPurchaseCompleted` — a refund / verification
         // failure arriving with no screen mounted must not vanish silently (#45).
         guard hasPurchaseFeedbackSubscriber else {
+            if let transactionID {
+                criticalWarnings?.recordPurchaseFailure(message, transactionID: transactionID)
+            }
             postLocalFeedbackNotification(title: Localized.text("deposit.notification.failed.title"), body: message)
             return
         }

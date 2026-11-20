@@ -2,11 +2,12 @@ import UIKit
 import os
 
 /// Durable FIFO of safety warnings. Replaying one only presents copy; it never
-/// replays the snooze, its charge/refund, or audio. Only OK acknowledges it.
+/// replays the snooze, its charge/refund, its purchase credit, or audio. Only OK
+/// acknowledges it.
 @MainActor
 final class CriticalWarningCenter {
     struct Warning: Codable, Equatable {
-        enum Cause: String, Codable { case schedulingFailed, alarmLoadFailed }
+        enum Cause: String, Codable { case schedulingFailed, alarmLoadFailed, purchaseFailed }
 
         let id: UUID
         let alarmID: UUID?
@@ -14,10 +15,18 @@ final class CriticalWarningCenter {
         let refundLanded: Bool
         // Missing in older records: keep them readable without suppressing a new cause.
         let cause: Cause?
+        /// The StoreKit transaction a `.purchaseFailed` warning is about (#1204).
+        var transactionID: String?
 
-        var title: String { Localized.text("alarm_failure.snooze.title") }
+        /// A purchase failure reads as the banner it stands in for: that banner's
+        /// title over the failure's own copy, which `detail` holds verbatim.
+        var title: String {
+            cause == .purchaseFailed
+                ? Localized.text("deposit.notification.failed.title") : Localized.text("alarm_failure.snooze.title")
+        }
         var message: String {
-            Localized.format(
+            if cause == .purchaseFailed { return detail }
+            return Localized.format(
                 refundLanded ? "alarm_failure.snooze.body_refunded" : "alarm_failure.snooze.body_charged", detail
             )
         }
@@ -55,7 +64,21 @@ final class CriticalWarningCenter {
     func record(
         detail: String, refundLanded: Bool, alarmID: UUID?, cause: Warning.Cause = .schedulingFailed
     ) {
-        pending.append(Warning(id: UUID(), alarmID: alarmID, detail: detail, refundLanded: refundLanded, cause: cause))
+        append(Warning(id: UUID(), alarmID: alarmID, detail: detail, refundLanded: refundLanded, cause: cause))
+    }
+
+    /// A StoreKit failure about a paid transaction that no screen was mounted to
+    /// show (#1204). The transaction stays unfinished and replays on every launch,
+    /// so one pending warning per transaction: a replay never stacks a second.
+    func recordPurchaseFailure(_ message: String, transactionID: UInt64) {
+        let key = String(transactionID)
+        guard !pending.contains(where: { $0.cause == .purchaseFailed && $0.transactionID == key }) else { return }
+        append(Warning(id: UUID(), alarmID: nil, detail: message, refundLanded: false,
+                       cause: .purchaseFailed, transactionID: key))
+    }
+
+    private func append(_ warning: Warning) {
+        pending.append(warning)
         _ = persist(pending) // Before any UIKit/optional-banner attempt.
         // Let the original callback finish its firing-screen teardown first.
         DispatchQueue.main.async { [weak self] in self?.flush() }
