@@ -125,6 +125,8 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private var autoResumeTimer: Timer?
     private var autoResumeDeadlineExpired = false
     private var failureAcknowledgementPending = false
+    /// A failure that reached the sheet after its own alert's OK (#1201): shown by the acknowledgement.
+    private var failureAfterAcknowledgement: (title: String?, message: String)?
     private var pauseEnded = false
     private var pauseStarted = false
 
@@ -825,16 +827,14 @@ extension FiringTopUpBottomSheetViewController {
         message: String?, title: String? = Localized.text("firing.alert.purchase_failed.title"),
         dismissTitle: String? = nil, noticeID: String? = nil
     ) {
-        guard !pauseEnded, successReceipt == nil, !failureAcknowledgementPending else { return }
+        guard !pauseEnded, successReceipt == nil else { return }
+        let message = message ?? Localized.text("firing.alert.purchase_failed.message")
+        guard !failureAcknowledgementPending else { return joinOwnAlert(title: title, message: message) }
         failureAcknowledgementPending = true
         purchaseInFlight = false
         updatePurchaseAvailability()
 
-        let alert = UIAlertController(
-            title: title,
-            message: message ?? Localized.text("firing.alert.purchase_failed.message"),
-            preferredStyle: .alert
-        )
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         if let noticeID { alert.view.accessibilityIdentifier = noticeID }
         let acknowledge = UIAlertAction(
             title: dismissTitle ?? Localized.text("common.button.ok"), style: .default
@@ -856,10 +856,29 @@ extension FiringTopUpBottomSheetViewController {
         }
     }
 
+    /// One alert at a time (#1201): a failure joins the sheet's own alert while it
+    /// is up (the test seam's alert counts as up), else waits for its OK.
+    private func joinOwnAlert(title: String?, message: String) {
+        if let own = ownAlert,
+           presentPurchaseFailure != nil || (own.presentingViewController != nil && !own.isBeingDismissed) {
+            own.addTopUpFailure(title: title, message: message)
+            AppLogger.emit(.ui, .default, "FiringTopUpSheet: alert added to its own alert")
+        } else if ownAlert?.saysTopUpParagraph(message) != true {
+            let held = failureAfterAcknowledgement
+            failureAfterAcknowledgement = (held?.title ?? title, topUpParagraphs(held?.message, adding: message))
+            AppLogger.emit(.ui, .default, "FiringTopUpSheet: alert deferred until its own alert's OK")
+        }
+    }
+
     /// Also called by the real error alert's OK action after its dismissal completes.
+    /// A failure deferred behind that alert is the next one, and holds the pause in turn.
     func acknowledgePurchaseFailure() {
         guard !pauseEnded, failureAcknowledgementPending else { return }
         failureAcknowledgementPending = false
+        if let next = failureAfterAcknowledgement {
+            failureAfterAcknowledgement = nil
+            return handlePurchaseFailure(message: next.message, title: next.title)
+        }
         resumeIfDeadlineExpired()
         updatePurchaseAvailability()
     }
@@ -908,6 +927,10 @@ extension FiringTopUpBottomSheetViewController {
         pauseEnded = true
         autoResumeDeadlineExpired = false
         failureAcknowledgementPending = false
+        if failureAfterAcknowledgement != nil {
+            AppLogger.emit(.ui, .error, "FiringTopUpSheet: deferred alert not shown, the pause ended before its OK")
+            failureAfterAcknowledgement = nil
+        }
         purchaseInFlight = false
         autoResumeTimer?.invalidate()
         autoResumeTimer = nil

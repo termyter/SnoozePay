@@ -617,16 +617,44 @@ final class DepositBottomSheetViewController: UIViewController {
     /// UIKit refuses a second presentation, so a refused alert is never recorded:
     /// it would replace the alert that is really up as `ownAlert` (#1190).
     private func presentOwnAlert(_ alert: UIAlertController) {
+        // A deferred alert may be retried twice (a coordinator that answered NO
+        // may still run its completion). The retry retains it, so once presented
+        // it stays `ownAlert` and the second retry stops here.
+        guard alert !== ownAlert else { return }
+        if let own = ownAlert, presentedViewController === own, own.presentedViewController == nil {
+            joinOwnAlert(own, with: alert)
+            return
+        }
         if let above = presentedViewController {
-            // Behind its own alert the sheet drops a message of its own. Under
-            // another screen it is routine routing: the failure observer is not
-            // gated, so another sheet's failure reaches this one (#1190).
+            // A screen over its own alert drops a message of the sheet's own, or
+            // routes another screen's failure. Under another screen it is routine
+            // routing: the failure observer is not gated (#1190).
             let level: OSLogType = above === ownAlert ? .error : .default
             AppLogger.emit(.ui, level, "DepositSheet: alert not shown, \(type(of: above)) is presented")
             return
         }
         ownAlert = alert
         present(alert, animated: true)
+    }
+
+    /// Behind its own alert the message joins it in place (#1201). Once OK was
+    /// tapped that alert is on its way out, and UIKit takes a new one only after
+    /// it has gone: the message is presented then, unless the alert said it.
+    private func joinOwnAlert(_ own: UIAlertController, with alert: UIAlertController) {
+        let message = alert.message ?? ""
+        guard own.isBeingDismissed else {
+            own.addTopUpFailure(title: alert.title, message: message)
+            AppLogger.emit(.ui, .default, "DepositSheet: alert added to its own alert")
+            return
+        }
+        guard !own.saysTopUpParagraph(message) else { return }
+        AppLogger.emit(.ui, .default, "DepositSheet: alert deferred, its own alert is being dismissed")
+        // The next turn, so UIKit has let go of the old alert; a retry still inside
+        // the transition comes back here and waits again.
+        let retry = { [weak self] in DispatchQueue.main.async { self?.presentOwnAlert(alert) } }
+        if own.transitionCoordinator?.animate(alongsideTransition: nil, completion: { _ in retry() }) != true {
+            retry()
+        }
     }
 
     /// Corruption-specific alert shown when the user taps «Пополнить» while

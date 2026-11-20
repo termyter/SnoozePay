@@ -176,9 +176,10 @@ final class TopUpSuccessDismissalTests: XCTestCase {
     }
 
     /// The failure observer is not gated, so a failure can reach a sheet that
-    /// already shows its pending notice. UIKit refuses that second alert; were it
-    /// recorded as `ownAlert`, the approval's dismissal would skip and leave the
-    /// sheet in success behind its own notice. Both close, as in #1189.
+    /// already shows its pending notice. UIKit refuses that second alert, so the
+    /// failure joins the notice instead of being dropped (#1201). Were a second
+    /// alert recorded as `ownAlert`, the approval's dismissal would skip and leave
+    /// the sheet in success behind its own notice. Both close, as in #1189.
     func testFailureOverTheDepositSheetsNoticeLeavesTheNoticeItsOwn() throws {
         let center = NotificationCenter()
         let balance = BalanceService(defaults: makeIsolatedDefaults(), notificationCenter: center)
@@ -192,10 +193,13 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         try button(in: sheet, id: "deposit.purchaseButton").sendActions(for: .touchUpInside)
         center.post(name: StoreKitService.purchasePendingNotification, object: nil)
         let notice = try presentedAlert(on: sheet, after: StoreKitService.purchasePendingNotification)
-        let refused = uiLines { center.post(name: StoreKitService.purchaseFailedNotification, object: nil) }
-        XCTAssertEqual(refused, ["error: DepositSheet: alert not shown, UIAlertController is presented"],
-                       "Behind its own notice the sheet drops a message of its own")
+        let joined = uiLines { center.post(name: StoreKitService.purchaseFailedNotification, object: nil) }
+        XCTAssertEqual(joined, ["default: DepositSheet: alert added to its own alert"],
+                       "Behind its own notice the message joins it, not dropped (#1201)")
         XCTAssertTrue(sheet.presentedViewController === notice, presentationDiagnostics(rootedAt: host))
+        XCTAssertEqual(notice.title, Localized.text("common.purchase_failed.title"))
+        XCTAssertEqual(notice.message, StoreKitService.purchasePendingMessage + "\n\n"
+                       + Localized.text("common.purchase_failed.message"))
 
         XCTAssertEqual(postCompletion(on: center), [])
         try XCTUnwrap(dismissal)()
