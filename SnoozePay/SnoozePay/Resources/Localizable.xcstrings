@@ -3925,6 +3925,24 @@
         }
       }
     },
+    "deposit.pending.message" : {
+      "comment" : "Top-up screens: title-less alert when StoreKit reports a pending purchase (Ask to Buy, bank confirmation). The tap is over; the credit arrives later only if the purchase is approved (#1183).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The purchase is awaiting approval. Your balance will be topped up once it is approved."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Покупка ожидает подтверждения. Баланс пополнится, как только её подтвердят."
+          }
+        }
+      }
+    },
     "deposit.preset.popular" : {
       "comment" : "Badge floating above the recommended amount tile (SPAmountPreset).",
       "extractionState" : "manual",

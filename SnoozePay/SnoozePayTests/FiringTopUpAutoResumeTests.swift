@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class FiringTopUpAutoResumeTests: XCTestCase {
-    func testOverdueCancellationResumesOnceAndPendingCannotResume() throws {
+    func testOverdueCancellationResumesOnce() throws {
         let fixture = try Fixture()
         defer { fixture.clear() }
         let sheet = fixture.makeSheet()
@@ -12,7 +12,6 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         button.sendActions(for: .touchUpInside)
         sheet.handleAutoResume()
         sheet.handleAutoResume()
-        fixture.post(StoreKitService.purchasePendingNotification)
         XCTAssertFalse(button.isEnabled)
         XCTAssertEqual(fixture.resumes, 0)
         XCTAssertTrue(try countdown(in: sheet).contains("00:00"))
@@ -27,19 +26,69 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         try fixture.assertWalletUnchanged()
     }
 
+    /// #1183: pending ends the tap with an approval notice. Like a failure alert
+    /// (#950) an unanswered notice holds the pause until OK; its OK in time
+    /// re-enables a retry and keeps the original deadline, which still resumes once.
+    func testPendingNoticeInTimeKeepsTheOriginalDeadlineAndAllowsRetry() throws {
+        let fixture = try Fixture()
+        defer { fixture.clear() }
+        let sheet = fixture.makeSheet()
+        sheet.loadViewIfNeeded()
+        sheet.viewWillAppear(false)
+        let originalDeadline = try XCTUnwrap(sheet.autoResumeFireDate)
+        let button = try purchaseButton(in: sheet)
+        button.sendActions(for: .touchUpInside)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        XCTAssertEqual(fixture.alerts.first?.view.accessibilityIdentifier, "purchase.pendingNotice")
+        XCTAssertFalse(button.isEnabled, "Held until the notice's OK")
+        sheet.acknowledgePurchaseFailure()
+        XCTAssertTrue(button.isEnabled)
+        XCTAssertEqual(sheet.autoResumeFireDate, originalDeadline, "Do not grant a fresh 60-second pause")
+        XCTAssertEqual(fixture.resumes, 0)
+        button.sendActions(for: .touchUpInside)
+        XCTAssertEqual(fixture.requested.count, 2)
+        fixture.post(StoreKitService.purchaseCancelledNotification)
+        sheet.handleAutoResume()
+        XCTAssertEqual(fixture.resumes, 1)
+        try fixture.assertWalletUnchanged()
+    }
+
+    /// The `purchaseInFlight` guard: an idle sheet has no tap to end, so pending
+    /// (another screen's purchase) shows nothing and leaves the deadline alone.
+    func testPendingOnAnIdleSheetShowsNothingAndTheDeadlineStillResumesOnce() throws {
+        let fixture = try Fixture()
+        defer { fixture.clear() }
+        let sheet = fixture.makeSheet()
+        let button = try purchaseButton(in: sheet)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        XCTAssertTrue(fixture.alerts.isEmpty)
+        XCTAssertTrue(button.isEnabled)
+        sheet.handleAutoResume()
+        XCTAssertEqual(fixture.resumes, 1)
+        try fixture.assertWalletUnchanged()
+    }
+
+    /// Pending (#1183) takes the failure alert's acknowledgement, so it is held
+    /// to the same rule here: either order, the pause resumes only after OK.
     func testFailureAcknowledgementHonorsDeadlineInEitherEventOrder() throws {
-        for deadlineFirst in [true, false] {
+        let failure = (StoreKitService.purchaseFailedNotification,
+                       Localized.text("firing.alert.purchase_failed.title") as String?,
+                       Localized.text("firing.alert.purchase_failed.message"))
+        let pending = (StoreKitService.purchasePendingNotification, nil as String?,
+                       StoreKitService.purchasePendingMessage)
+        let cases = [failure, pending].flatMap { kind in [true, false].map { (kind, $0) } }
+        for ((event, title, message), deadlineFirst) in cases {
             let fixture = try Fixture()
             defer { fixture.clear() }
             let sheet = fixture.makeSheet()
             try purchaseButton(in: sheet).sendActions(for: .touchUpInside)
             if deadlineFirst { sheet.handleAutoResume() }
-            fixture.post(StoreKitService.purchaseFailedNotification)
-            fixture.post(StoreKitService.purchaseFailedNotification)
+            fixture.post(event)
+            fixture.post(event)
             let alert = try XCTUnwrap(fixture.alerts.first)
             XCTAssertEqual(fixture.alerts.count, 1, "Duplicate failure must not stack alerts")
-            XCTAssertEqual(alert.title, Localized.text("firing.alert.purchase_failed.title"))
-            XCTAssertEqual(alert.message, Localized.text("firing.alert.purchase_failed.message"))
+            XCTAssertEqual(alert.title, title)
+            XCTAssertEqual(alert.message, message)
             XCTAssertEqual(alert.actions.map(\.title), [Localized.text("common.button.ok")])
             sheet.handleAutoResume()
             sheet.handleAutoResume()

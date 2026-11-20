@@ -79,7 +79,6 @@ final class DepositCatalogCurrencyTests: XCTestCase {
         try purchaseButton(sheet).sendActions(for: .touchUpInside)
         fixture.reload()
         XCTAssertFalse(try purchaseButton(sheet).isEnabled)
-        fixture.center.post(name: StoreKitService.purchasePendingNotification, object: nil)
         fixture.reload()
         try purchaseButton(sheet).sendActions(for: .touchUpInside)
         XCTAssertFalse(try purchaseButton(sheet).isEnabled)

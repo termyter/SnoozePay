@@ -24,12 +24,12 @@ import XCTest
 ///     Layers 1 and 2 are both blind to a typo in the *key* at the call site,
 ///     because there the catalogue itself is fine.
 ///
-/// Layer 3 reaches **13 of the 20 keys**, and the gap is worth naming rather
+/// Layer 3 reaches **14 of the 21 keys**, and the gap is worth naming rather
 /// than leaving for a reader to discover:
 ///
 /// | reached | how |
 /// |---|---|
-/// | the three service failure messages | read straight off `StoreKitService` |
+/// | the three service failure messages, the pending notice (#1183) | read straight off `StoreKitService` |
 /// | the two deferred-purchase notifications | posted through an injected spy |
 /// | the seven restore-error branches | `StoreKitRestoreErrorCopy.message(for:)` |
 ///
@@ -70,6 +70,8 @@ final class StoreKitCopyTests: XCTestCase {
         "deposit.notification.credited.title": "Баланс пополнен",
         "deposit.notification.credited.body": "Баланс пополнен на %@.",
         "deposit.notification.failed.title": "Покупка пополнения",
+        // #1183, added after the migration: the notice for a pending purchase.
+        "deposit.pending.message": "Покупка ожидает подтверждения. Баланс пополнится, как только её подтвердят.",
         "deposit.restore.success.title": "Запрос отправлен",
         "deposit.restore.success.message":
             "Если есть незавершённая покупка, баланс обновится после её подтверждения. "
@@ -145,6 +147,14 @@ final class StoreKitCopyTests: XCTestCase {
             StoreKitService.foreignCurrencyFailureMessage,
             Localized.text("deposit.error.foreign_currency")
         )
+    }
+
+    /// #1183: the pending notice is not a failure, so it sits outside the list
+    /// above. The screens' tests compare it with itself, so only this catches a
+    /// typo in its key: the raw key would ship inside the notice.
+    func testPendingNoticeReadsAsItsTranscribedCopy() {
+        assertIsRussianCopy(StoreKitService.purchasePendingMessage)
+        XCTAssertEqual(StoreKitService.purchasePendingMessage, Self.copy["deposit.pending.message"])
     }
 
     // MARK: - Layer 3: the deferred-purchase local notifications

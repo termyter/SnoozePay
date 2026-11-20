@@ -143,6 +143,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
     private var purchaseCancelledObserver: NSObjectProtocol?
+    private var purchasePendingObserver: NSObjectProtocol?
     /// Optional product dispatch keeps this real form testable without an App Store catalogue.
     private let purchaseProduct: ((String) -> Void)?
     private let notificationCenter: NotificationCenter
@@ -357,6 +358,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         if let token = purchaseCancelledObserver {
             notificationCenter.removeObserver(token)
         }
+        if let token = purchasePendingObserver { notificationCenter.removeObserver(token) }
         autoResumeTimer?.invalidate()
         countdownTimer?.invalidate()
     }
@@ -574,7 +576,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
 
     private var canPurchase: Bool { !purchaseInFlight && canSelectProduct }
 
-    /// A pending purchase blocks dispatch, but a new SKU remains selected for retry after cancellation.
+    /// An in-flight purchase blocks dispatch, but a new SKU remains selected for retry after cancellation.
     private var canSelectProduct: Bool {
         successReceipt == nil && !failureAcknowledgementPending && !pauseEnded
     }
@@ -690,6 +692,19 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             self.resumeIfDeadlineExpired()
             self.updatePurchaseAvailability()
         }
+        purchasePendingObserver = center.addObserver(
+            forName: StoreKitService.purchasePendingNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.handlePurchasePending() }
+    }
+
+    /// Ask to Buy / SCA ends this tap (#1183): a decline may never arrive, so
+    /// the tap does not wait for one. The notice takes the failure alert's
+    /// acknowledgement: an unanswered notice holds the pause until OK, as a
+    /// failure alert does (#950), and an expired deadline resumes on OK.
+    private func handlePurchasePending() {
+        guard purchaseInFlight else { return }
+        handlePurchaseFailure(message: StoreKitService.purchasePendingMessage, title: nil,
+                              noticeID: "purchase.pendingNotice")
     }
 }
 
@@ -793,22 +808,31 @@ extension FiringTopUpBottomSheetViewController {
 
         endPauseTimers()
 
+        // Through the presenter (#1189): `dismiss` on a sheet that still shows
+        // the pending notice or a failure alert closes only that alert, and
+        // the paused alarm stays behind the success state.
         scheduleSuccessDismissal(2) { [weak self] in
-            self?.dismiss(animated: true)
+            guard let self else { return }
+            (self.presentingViewController ?? self).dismiss(animated: true)
         }
     }
 
-    private func handlePurchaseFailure(message: String?, title: String? = nil, dismissTitle: String? = nil) {
+    /// `title: nil` is the pending notice, which is not a failure.
+    private func handlePurchaseFailure(
+        message: String?, title: String? = Localized.text("firing.alert.purchase_failed.title"),
+        dismissTitle: String? = nil, noticeID: String? = nil
+    ) {
         guard !pauseEnded, successReceipt == nil, !failureAcknowledgementPending else { return }
         failureAcknowledgementPending = true
         purchaseInFlight = false
         updatePurchaseAvailability()
 
         let alert = UIAlertController(
-            title: title ?? Localized.text("firing.alert.purchase_failed.title"),
+            title: title,
             message: message ?? Localized.text("firing.alert.purchase_failed.message"),
             preferredStyle: .alert
         )
+        if let noticeID { alert.view.accessibilityIdentifier = noticeID }
         let acknowledge = UIAlertAction(
             title: dismissTitle ?? Localized.text("common.button.ok"), style: .default
         ) { [weak self, weak alert] _ in

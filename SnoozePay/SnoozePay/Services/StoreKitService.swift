@@ -48,6 +48,8 @@ final class StoreKitService {
 
     /// Fired when a purchase enters Ask-to-Buy / SCA verification.
     /// Resolves later via `Transaction.updates` once parent approves. No userInfo.
+    /// A screen treats it as the end of its tap (#1183): a decline may never
+    /// arrive, so waiting for a terminal event leaves a dead button.
     static let purchasePendingNotification = Notification.Name("snoozepay.storekit.purchasePending")
 
     /// Terminal App Store cancellation. No credit, error, or userInfo.
@@ -87,6 +89,10 @@ final class StoreKitService {
     /// transaction came from outside that gate — an Ask-to-Buy approval or a
     /// restore that resolved after the storefront changed.
     static var foreignCurrencyFailureMessage: String { Localized.text("deposit.error.foreign_currency") }
+
+    /// What a top-up screen says on `purchasePendingNotification` (#1183): the
+    /// purchase waits for approval and its credit comes later, if at all.
+    static var purchasePendingMessage: String { Localized.text("deposit.pending.message") }
 
     /// The last successfully loaded catalogue (#1109). A failed reload keeps it.
     private(set) var catalogue = LoadedCatalogue.empty
@@ -305,7 +311,7 @@ final class StoreKitService {
         recordPriceScale(from: products)
         do {
             let result = try await product.purchase()
-            try await handlePurchaseResult(result)
+            try await handlePurchaseResult(result, productID: product.id)
         } catch {
             AppLogger.storeKit.error(
                 "purchase failed: \(String(describing: error), privacy: .public)"
@@ -316,7 +322,8 @@ final class StoreKitService {
 
     /// Separate result dispatch lets tests exercise real terminal/nonterminal branches
     /// without constructing an App Store product. Verification and credit are unchanged.
-    func handlePurchaseResult(_ result: Product.PurchaseResult) async throws {
+    /// `productID` only labels the pending log line.
+    func handlePurchaseResult(_ result: Product.PurchaseResult, productID: String? = nil) async throws {
         switch result {
         case .success(let verification):
             let transaction = try checkVerified(verification)
@@ -329,6 +336,14 @@ final class StoreKitService {
 
         case .pending:
             // Ask-to-Buy or SCA — resolved later via Transaction.updates listener.
+            // The screens end their tap here and a decline may never come back,
+            // so this line is the only trace of the wait (#1183).
+            let pendingID = productID ?? "unknown"
+            AppLogger.emit(
+                .storeKit, .default,
+                "purchase pending (Ask to Buy / SCA) — awaiting Transaction.updates; "
+                    + "productID=\(pendingID) feedbackSubscribers=\(purchaseFeedbackSubscribers)"
+            )
             postPurchasePending()
 
         @unknown default:

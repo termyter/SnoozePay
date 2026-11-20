@@ -1,6 +1,7 @@
 import StoreKit
 import UIKit
 import XCTest
+import os
 @testable import SnoozePay
 
 @MainActor
@@ -74,11 +75,6 @@ final class StoreKitPurchaseCancellationTests: XCTestCase {
             currentButton.sendActions(for: .touchUpInside)
             XCTAssertEqual(requested.count, 1, "A rebuilt button must not start a concurrent purchase")
 
-            try await store.handlePurchaseResult(.pending)
-            XCTAssertFalse(currentButton.isEnabled, "Pending must not take the cancellation path")
-            currentButton.sendActions(for: .touchUpInside)
-            XCTAssertEqual(requested.count, 1)
-
             try await store.handlePurchaseResult(.userCancelled)
             try await store.handlePurchaseResult(.userCancelled)
             XCTAssertTrue(currentButton.isEnabled)
@@ -97,6 +93,41 @@ final class StoreKitPurchaseCancellationTests: XCTestCase {
             XCTAssertFalse(currentButton.isEnabled)
             try await store.handlePurchaseResult(.userCancelled)
             XCTAssertTrue(currentButton.isEnabled)
+        }
+    }
+
+    /// #1183: the screens end their tap on pending and a decline may never come
+    /// back, so this line is the only trace of what the purchase waits for.
+    func testPendingBranchLogsTheWaitWithItsProductAndSubscriberCount() async throws {
+        store.beginObservingPurchaseFeedback()
+        defer { store.endObservingPurchaseFeedback() }
+        var lines: [String] = []
+        try await AppLogger.withAsyncTestSink({ category, level, message in
+            if category == .storeKit, level == .default, message.contains("pending") { lines.append(message) }
+        }, perform: {
+            try await store.handlePurchaseResult(.pending, productID: "io.mobilife.snoozepay.balance.149")
+        })
+        XCTAssertEqual(lines, [
+            "purchase pending (Ask to Buy / SCA) — awaiting Transaction.updates; "
+                + "productID=io.mobilife.snoozepay.balance.149 feedbackSubscribers=1"
+        ])
+    }
+
+    /// #1183: the real `.pending` branch reaches both sheets and ends their tap
+    /// (the firing sheet after its notice's OK) without touching the wallet.
+    func testRealPendingBranchEndsEitherSheetsTap() async throws {
+        for firing in [false, true] {
+            var requested: [String] = []
+            let sheet = makeSheet(firing: firing) { requested.append($0) }
+            sheet.loadViewIfNeeded()
+            let button = try purchaseButton(in: sheet)
+            button.sendActions(for: .touchUpInside)
+            try await store.handlePurchaseResult(.pending)
+            (sheet as? FiringTopUpBottomSheetViewController)?.acknowledgePurchaseFailure()
+            XCTAssertTrue(button.isEnabled, "firing: \(firing)")
+            button.sendActions(for: .touchUpInside)
+            XCTAssertEqual(requested.count, 2, "firing: \(firing)")
+            XCTAssertEqual(balance.balance, 0)
         }
     }
 
