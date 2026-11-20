@@ -85,14 +85,89 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
             XCTAssertEqual(fixture.requested, [Fixture.sku], code)
             XCTAssertTrue(fixture.controller.alerts.isEmpty, code)
             XCTAssertTrue(fixture.controller.noBalancePurchaseInFlight, code)
+            XCTAssertEqual(fixture.controller.applePayNoBalanceButton?.isEnabled, false, "In flight — \(code)")
             XCTAssertEqual(fixture.begins, 1, code)
         }
+    }
+
+    // MARK: - Foreign storefront (#1174)
+
+    /// The catalogue filter ranks packs by `acceptsPurchase`, but a wallet that
+    /// refuses the whole storefront still gets a refused pack quoted: the CTA is
+    /// visible and enabled, and the tap names the refusal — the lock on an
+    /// unreadable ledger, the currency on a readable one. Never a tap that only
+    /// refreshes the catalogue.
+    func testForeignStorefront_ctaStaysTappable_andTheTapNamesTheRefusal() throws {
+        let eur = try XCTUnwrap(Currency(code: "EUR"))
+        for (frozen, storefront) in [(false, usd), (true, eur)] {
+            for readable in [true, false] {
+                let label = "\(frozen ? "USD" : "RUB") wallet, \(storefront.code) store, readable \(readable)"
+                let fixture = try Fixture(test: self, pack: (storefront.code, "4.99"),
+                                          skus: StoreKitService.productIDs) { defaults in
+                    if frozen {
+                        self.freezeUSD(defaults)
+                        self.cacheUSDScale(defaults)
+                    } else if readable {
+                        // History: the rouble wallet is no longer free to adopt dollars.
+                        let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
+                        XCTAssertEqual(wallet.topUpFromPurchase(amount: 10, currency: .rub), .credited)
+                    }
+                    if !readable { defaults.set(self.unreadable, forKey: self.ledgerKey) }
+                }
+                let controller = fixture.controller
+                XCTAssertEqual(controller.noBalanceContainer?.isHidden, false, label)
+                XCTAssertEqual(controller.noBalancePurchase.offer?.currency, storefront, label)
+                XCTAssertEqual(controller.applePayNoBalanceButton?.isEnabled, true, label)
+
+                try fixture.tap()
+
+                guard readable else {
+                    assertRefusedAsLocked(fixture, label)
+                    continue
+                }
+                XCTAssertTrue(fixture.requested.isEmpty, label)
+                XCTAssertEqual(controller.alerts.count, 1, label)
+                XCTAssertEqual(controller.alerts.first?.title, ForeignCurrencyNotice.alertTitle, label)
+                let notice = ForeignCurrencyNotice.message(wallet: frozen ? usd : .rub, storefront: storefront)
+                XCTAssertEqual(controller.alerts.first?.message, notice, label)
+            }
+        }
+    }
+
+    /// A pristine wallet locked this ring's price in dollars, then the ledger
+    /// broke: the wallet can no longer adopt dollars, so the price is stranded.
+    /// A tap on the CTA still on screen names the lock; the next pass replaces
+    /// the CTA with the progression-unavailable text — not a silent screen.
+    func testLedgerDamagedMidRing_strandedDollarPrice_isExplainedNotSilent() throws {
+        let fixture = try Fixture(test: self, pack: ("USD", "4.99")) { defaults in
+            self.cacheUSDScale(defaults)
+        }
+        let controller = fixture.controller
+        XCTAssertEqual(controller.viewModel.priceCurrency, usd)
+        XCTAssertFalse(controller.viewModel.isLockedPriceStranded, "Pristine: a dollar top-up can pay it")
+        XCTAssertEqual(controller.noBalanceContainer?.isHidden, false)
+
+        fixture.defaults.set(unreadable, forKey: ledgerKey)
+        XCTAssertTrue(controller.viewModel.isLockedPriceStranded)
+        try fixture.tap()
+        assertRefusedAsLocked(fixture, "CTA still on screen after the ledger broke")
+
+        controller.updateUI()
+        XCTAssertEqual(controller.noBalanceContainer?.isHidden, true, "No top-up for a stranded price")
+        XCTAssertFalse(controller.progressionUnavailableLabel.isHidden)
     }
 
     // MARK: - Helpers
 
     private func freezeUSD(_ defaults: UserDefaults) {
         XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(usd), .frozen(usd))
+    }
+
+    /// The dollar storefront's snooze scale, so a dollar price resolves.
+    private func cacheUSDScale(_ defaults: UserDefaults) {
+        let scale = SnoozePriceScale(currency: usd, tierStrings: ["0.99", "1.99", "2.99"])
+        let store = SnoozePriceScaleStore(defaults: defaults, notificationCenter: NotificationCenter())
+        XCTAssertEqual(scale.map { store.record($0) }, true, "USD scale cached")
     }
 
     private func assertRefusedAsLocked(_ fixture: Fixture, _ label: String) {
@@ -117,13 +192,19 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
         var requested: [String] = []
         var begins = 0
 
-        init(test: XCTestCase, pack: (code: String, price: String), prepare: (UserDefaults) -> Void) throws {
+        /// `skus`: the catalogue, every pack priced as `pack`.
+        init(test: XCTestCase, pack: (code: String, price: String), skus: [String] = [Fixture.sku],
+             prepare: (UserDefaults) -> Void) throws {
             defaults = test.makeIsolatedDefaults()
             prepare(defaults)
             let center = NotificationCenter()
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
-            let offer = try XCTUnwrap(TopUpOffer(productID: Self.sku, price: Decimal(string: pack.price)!,
-                                                 currencyCode: pack.code, displayPrice: "\(pack.price) \(pack.code)"))
+            let price = try XCTUnwrap(Decimal(string: pack.price))
+            let offers = skus.compactMap {
+                TopUpOffer(productID: $0, price: price, currencyCode: pack.code,
+                           displayPrice: "\(pack.price) \(pack.code)")
+            }
+            XCTAssertEqual(offers.count, skus.count, "Every pack is a valid offer")
             let backend = TestAlarmKitBackend()
             let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
             let model = AlarmFiringViewModel(
@@ -135,7 +216,7 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
             controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
                 controller: controller, center: center,
                 dispatch: { [weak self] in self?.requested.append($0) },
-                offerProvider: { $0 == Self.sku ? offer : nil },
+                offerProvider: { id in offers.first { $0.productID == id } },
                 beginFeedback: { [weak self] in self?.begins += 1 }, endFeedback: {}
             )
             controller.loadViewIfNeeded()

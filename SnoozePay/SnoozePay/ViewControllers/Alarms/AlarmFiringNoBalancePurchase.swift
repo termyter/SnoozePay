@@ -43,6 +43,11 @@ final class AlarmFiringNoBalancePurchase {
     /// Sufficiency is reckoned in the locked price's currency (#1142): a
     /// pristine wallet on a dollar storefront picks the minimal dollar pack. A
     /// price the wallet cannot hold never reaches here (it is stranded).
+    ///
+    /// `acceptsPurchase` only ranks the packs; it never empties the pick. When
+    /// the wallet refuses the whole storefront (foreign currency, unreadable
+    /// ledger), a refused pack stands in, so the CTA stays tappable and the
+    /// tap's `prePurchaseRefusal(in:)` names the refusal (#1174).
     var offer: TopUpOffer? {
         guard let model = controller?.viewModel else { return nil }
         let currency = model.priceCurrency
