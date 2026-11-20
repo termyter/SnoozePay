@@ -32,6 +32,10 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // Silence and drain BEFORE taking the slot: work an earlier test queued
+        // would otherwise run after the slot was emptied and write into it (#618).
+        AudioService.shared.stopAlarmSound()
+        drainMainQueue()
         defaults = makeIsolatedDefaults()
         poster = LocalNotificationPosterSpy()
         router = AlarmKitActionRouter()
@@ -41,8 +45,7 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
         )
         router.notificationPoster = poster
         router.present = { [weak self] in self?.presented.append($0) }
-        // Start from silence, with anything an earlier test queued already run (#618).
-        AudioService.shared.stopAlarmSound()
+        // Run whatever this setUp queued itself, into this test's own slot.
         drainMainQueue()
     }
 

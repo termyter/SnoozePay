@@ -34,6 +34,10 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // Silence and drain BEFORE taking the slot: work an earlier test queued
+        // would otherwise run after the slot was emptied and write into it.
+        AudioService.shared.stopAlarmSound()
+        drainMainQueue()
         defaults = makeIsolatedDefaults()
         let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: nil)
         presenter = AlarmFiringPresenter(alarmRepository: AlarmRepository(defaults: defaults, scheduler: scheduler))
@@ -44,7 +48,7 @@ final class AlarmFiringPresenterMissTests: XCTestCase {
         }
         presenter.isRootReady = { true }
         presenter.reportDataCorrupted = { [weak self] in self?.reported.append($0) }
-        AudioService.shared.stopAlarmSound()
+        // Run whatever this setUp queued itself, into this test's own slot.
         drainMainQueue()
     }
 

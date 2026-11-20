@@ -310,6 +310,13 @@ final class IsolatedDefaultsTestSupportTests: XCTestCase {
         XCTAssertGreaterThan(sources.count, 50, "found \(sources.count) sources — the scan would be vacuous")
 
         let subclasses = Self.defaultsSubclasses(in: sources)
+        // The allowlist is empty, so a pattern that failed to compile or matches
+        // nothing would pass here on its own: prove it still counts a raw site.
+        _ = try XCTUnwrap(Self.rawSitePattern(subclasses: subclasses), "the raw-site pattern did not compile")
+        XCTAssertEqual(
+            Self.rawSuiteSites(in: "let d = UserDefaults(" + "suiteName: name)", subclasses: subclasses), 1,
+            "the ratchet no longer counts a plain raw site"
+        )
         let found = sources.compactMapValues { text -> Int? in
             let count = Self.rawSuiteSites(in: text, subclasses: subclasses)
             return count > 0 ? count : nil
