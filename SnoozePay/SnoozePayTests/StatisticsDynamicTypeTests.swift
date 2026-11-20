@@ -8,19 +8,30 @@ import XCTest
 ///
 /// Same approach as `AlarmsListDynamicTypeTests`: every measurement sets the
 /// category explicitly on the host window, so nothing depends on what the
-/// simulator is set to. The screen runs on a pool suite with its own stores;
-/// the date-dependent content (streak, heatmap month, trend) is replaced by a
-/// fixed fixture after the load, so the geometry does not move with the calendar.
+/// simulator is set to. The screen runs on a pool suite with its own stores,
+/// seeded so the view model says the same thing on every day of the week; the
+/// content that still follows the calendar (streak, heatmap month, trend) is
+/// replaced by a fixed fixture before the first layout.
 @MainActor
 final class StatisticsDynamicTypeTests: XCTestCase {
 
     private static let ax5 = UIContentSizeCategory.accessibilityExtraExtraExtraLarge
     private let narrow: CGFloat = 375
-    /// Today's pinned trend card: the subtitle fits beside «Эта неделя».
-    private static let shortSubtitle = StatisticsViewModel.subtitle(forDiff: 9)
-    /// The card's longest string, which needs the headline column to wrap.
-    private static let longSubtitle = StatisticsViewModel.subtitle(forDiff: 0)
     private let wide: CGFloat = 402
+
+    /// The trend card's copy, set by the fixture.
+    fileprivate struct TrendCopy {
+        let direction: StatisticsViewModel.TrendDirection
+        let subtitle: String
+        var headline: String { StatisticsViewModel.headline(for: direction) }
+
+        /// Today's pinned card: the subtitle fits beside «Эта неделя».
+        static let today = TrendCopy(direction: .worse, subtitle: StatisticsViewModel.subtitle(forDiff: 9))
+        /// The card's longest string, which needs the headline column to wrap.
+        static let longest = TrendCopy(direction: .worse, subtitle: StatisticsViewModel.subtitle(forDiff: 0))
+        /// «Стабильно»: one line at every size, and no arrow.
+        static let steady = TrendCopy(direction: .same, subtitle: StatisticsViewModel.subtitle(forDiff: 9))
+    }
 
     private var hostWindows: [UIWindow] = []
 
@@ -32,32 +43,55 @@ final class StatisticsDynamicTypeTests: XCTestCase {
 
     // MARK: - Seam
 
-    func testTheStatisticsRolesAreTheFixedFontsAtTheDefaultSizeAndCappedAtAX5() {
-        let large = UITraitCollection(preferredContentSizeCategory: .large)
-        let grown = UITraitCollection(preferredContentSizeCategory: Self.ax5)
-        let roles: [(UIFont, UIFont.TextStyle)] = [
-            (AppTypography.moneyXl, .largeTitle), (AppTypography.h3, .title3), (AppTypography.moneyMd, .title3),
-            (AppFonts.sans(.semibold, 10), .caption2), (AppFonts.sans(.bold, 12), .caption1),
-            (AppFonts.sans(.medium, 11), .caption2), (AppFonts.sans(.semibold, 13), .footnote)
-        ]
-        for (fixed, style) in roles {
-            let name = "\(fixed.fontName) \(fixed.pointSize)"
-            let atLarge = AppTypography.scaled(fixed, as: style, compatibleWith: large)
-            XCTAssertEqual(atLarge.pointSize, fixed.pointSize, "\(name) moved at the default size")
-            XCTAssertEqual(atLarge.fontName, fixed.fontName, "\(name) changed face")
-            let atAX5 = AppTypography.scaled(fixed, as: style, compatibleWith: grown).pointSize
-            XCTAssertGreaterThan(atAX5, fixed.pointSize, "\(name) ignores Dynamic Type")
-            XCTAssertLessThanOrEqual(atAX5, fixed.pointSize * AppTypography.maximumScale, "\(name) exceeded the cap")
+    /// Each label draws its own fixed font scaled on the text style it was
+    /// given, read off the screen at two sizes where the styles grow by
+    /// different amounts — a label on the wrong style, or left fixed, is off.
+    func testEveryLabelScalesOnItsTextStyle() throws {
+        XCTAssertEqual(AppTypography.maximumScale, 2, "the cap the whole slice is measured against")
+        for category in [UIContentSizeCategory.extraExtraLarge, .accessibilityMedium] {
+            let screen = try hosted(category, width: narrow)
+            let controller = screen.controller
+            let header = try XCTUnwrap(descendants(of: SPPageHeader.self, in: screen.view).first)
+            let trend = try card(containing: controller.trendBarsView)
+            let bars = controller.weekdayBarsView
+            let text = { (key: String, root: UIView) in try self.label(Localized.text(key), in: root) }
+            let roles = [
+                Role(try text("statistics.title", header), AppTypography.h1, .largeTitle),
+                Role(try text("statistics.trend.caps", trend), AppTypography.caps, .caption1),
+                Role(controller.streakBigLabel, AppTypography.moneyXl, .largeTitle),
+                Role(controller.streakBigWordLabel, AppTypography.h3, .title3),
+                Role(controller.streakMetaLabel, AppTypography.meta, .footnote),
+                Role(try label("ПН", in: controller.heatmapView), AppFonts.sans(.semibold, 10), .caption2),
+                Role(controller.weekdayHeadlineLabel, AppTypography.h3, .title3),
+                Role(try label("2,5", in: bars), AppFonts.sans(.bold, 12), .caption1),
+                Role(try label("Пн", in: bars), AppFonts.sans(.medium, 11), .caption2),
+                Role(try label("Ср", in: bars), AppFonts.sans(.bold, 11), .caption2),
+                Role(controller.trendHeadlineLabel, AppTypography.h3, .title3),
+                Role(controller.trendSubtitleLabel, AppTypography.meta, .footnote),
+                Role(try text("statistics.trend.week_caption", trend), AppTypography.meta, .footnote),
+                Role(controller.trendWeekValueLabel, AppTypography.moneyMd, .title3),
+                Role(try text("statistics.trend.axis_start", trend), AppTypography.meta, .footnote),
+                Role(try text("statistics.trend.axis_end", trend), AppFonts.sans(.semibold, 13), .footnote)
+            ]
+            for role in roles {
+                let name = "«\(role.label.attributedText?.string ?? "")» at \(category.rawValue)"
+                let traits = role.label.traitCollection
+                let expected = AppTypography.scaled(role.fixed, as: role.style, compatibleWith: traits)
+                XCTAssertGreaterThan(expected.pointSize, role.fixed.pointSize, "\(name): the size does not grow")
+                let drawn = try font(of: role.label)
+                XCTAssertEqual(drawn.pointSize, expected.pointSize, accuracy: 0.01, "\(name): not on \(role.style)")
+                XCTAssertEqual(drawn.fontName, role.fixed.fontName, "\(name) changed face")
+            }
         }
     }
 
     // MARK: - Default size
 
-    /// Every frame measured on main (65cd789e; the tab is the same at
-    /// d40b298a) with this harness and fixture, cold in a real window at
-    /// `.large`, at both widths, with the subtitle that fits beside «Эта
-    /// неделя». The long one is not pinned: main cuts «Эта неделя» beside it
-    /// (`testBelowXLTheTrendSummaryKeepsItsRowAndItsCaptionWhole`).
+    /// Every frame measured on main with this harness and fixture, cold in a
+    /// real window at `.large`, at both widths, with `TrendCopy.today` (the
+    /// tab's sources and its design system are the same from 65cd789e to
+    /// df9e3756). The longest copy is not pinned: main cuts «Эта неделя»
+    /// beside it (`testBelowXLTheTrendSummaryKeepsItsRowAndItsCaptionWhole`).
     ///
     /// Six labels now get their width from a `.fill` stack instead of their
     /// own text (the meta lines must wrap at large sizes); their text is
@@ -65,7 +99,7 @@ final class StatisticsDynamicTypeTests: XCTestCase {
     /// the text draws where it did.
     func testAtTheDefaultSizeTheTabIsUnchanged() throws {
         for width in [narrow, wide] {
-            let screen = try hosted(.large, width: width, subtitle: Self.shortSubtitle)
+            let screen = try hosted(.large, width: width, trend: .today)
             try assertTodaysGeometry(screen, width: width)
         }
     }
@@ -76,7 +110,7 @@ final class StatisticsDynamicTypeTests: XCTestCase {
         let regular = try hosted(.large, width: narrow)
         let grown = try hosted(Self.ax5, width: narrow)
         let texts = [
-            Localized.text("statistics.title"), Localized.text("statistics.streak.caps"), "12", dayWord,
+            Localized.text("statistics.title"), Localized.text("statistics.streak.caps"), "12", "7", dayWord,
             lastSlip, Localized.text("statistics.streak.legend"), Localized.text("statistics.weekday.caps"),
             Localized.text("statistics.weekday.meta"), Localized.text("statistics.trend.caps"),
             Localized.text("statistics.trend.worse"), Localized.text("statistics.trend.no_change"),
@@ -170,7 +204,7 @@ final class StatisticsDynamicTypeTests: XCTestCase {
     /// today's pinned geometry.
     func testALiveCategoryChangeGrowsTheTabAndReturnsToToday() throws {
         for width in [narrow, wide] {
-            let screen = try hosted(.large, width: width, subtitle: Self.shortSubtitle)
+            let screen = try hosted(.large, width: width, trend: .today)
             set(screen, to: Self.ax5)
             let caps = try attributes(of: label(Localized.text("statistics.trend.caps"), in: screen.view))
             XCTAssertGreaterThan(caps.font.pointSize, AppTypography.caps.pointSize, "the caps were not rebuilt")
@@ -194,8 +228,9 @@ final class StatisticsDynamicTypeTests: XCTestCase {
 
     /// A user who already runs a large size opens the tab: the first layout
     /// is the grown one, frame for frame the same as after a live change; and
-    /// the way back matches a cold open at today's size. With the long
-    /// subtitle, which makes both wrapping trend labels re-measure.
+    /// the way back matches a cold open at today's size, as does a cold AX5
+    /// open shrunk to it. With the longest copy, which makes both wrapping
+    /// trend labels re-measure.
     func testAColdStartMatchesALiveChangeBothWays() throws {
         for width in [narrow, wide] {
             let cold = try hosted(Self.ax5, width: width)
@@ -204,8 +239,77 @@ final class StatisticsDynamicTypeTests: XCTestCase {
             try assertSameLabelFrames(cold, live, "AX5 at \(width)")
             try assertNothingClipped(in: cold, "cold AX5 at \(width)")
 
+            let today = try hosted(.large, width: width)
             set(live, to: .large)
-            try assertSameLabelFrames(try hosted(.large, width: width), live, "back to large at \(width)")
+            try assertSameLabelFrames(today, live, "back to large at \(width)")
+            set(cold, to: .large)
+            try assertSameLabelFrames(today, cold, "cold AX5 shrunk to large at \(width)")
+        }
+    }
+
+    /// Between accessibility sizes the trend text is already at its 2× cap, so
+    /// a one-line headline measures exactly as before; the re-measure must
+    /// still hand it its width back rather than leave it at the zero it starts
+    /// from.
+    func testALiveChangeBetweenCappedSizesKeepsAOneLineHeadline() throws {
+        let ax4 = UIContentSizeCategory.accessibilityExtraExtraLarge
+        let atAX4 = UITraitCollection(preferredContentSizeCategory: ax4)
+        for (fixed, style) in [(AppTypography.h3, UIFont.TextStyle.title3), (AppTypography.meta, .footnote)] {
+            XCTAssertEqual(
+                AppTypography.scaled(fixed, as: style, compatibleWith: atAX4).pointSize,
+                fixed.pointSize * AppTypography.maximumScale, "AX4 is not capped: the test would prove nothing"
+            )
+        }
+        for width in [narrow, wide] {
+            let live = try hosted(ax4, width: width, trend: .steady)
+            XCTAssertTrue(live.controller.trendArrowView.isHidden)
+            set(live, to: Self.ax5)
+            XCTAssertGreaterThan(live.controller.trendHeadlineLabel.bounds.width, 0, "the headline lost its width")
+            try assertSameLabelFrames(try hosted(Self.ax5, width: width, trend: .steady), live, "AX4 → AX5 at \(width)")
+        }
+    }
+
+    /// The view model hands the card new copy while it is on screen (every
+    /// appearance reloads): the labels are measured for the new text, as a
+    /// cold open with that text would be, not wrapped at the old one's width.
+    func testNewTrendCopyIsMeasuredAfresh() throws {
+        for width in [narrow, wide] {
+            let refreshed = try hosted(.large, width: width, trend: .today)
+            refreshed.controller.viewModel.loadData()
+            refreshed.window.layoutIfNeeded()
+            let cold = try hosted(.large, width: width, trend: nil)
+            let controller = cold.controller
+            XCTAssertEqual(controller.trendHeadlineLabel.text, Localized.text("statistics.trend.same"))
+            XCTAssertEqual(controller.trendSubtitleLabel.text, Localized.text("statistics.trend.no_change"))
+            for (label, expected) in [
+                (refreshed.controller.trendHeadlineLabel, controller.trendHeadlineLabel),
+                (refreshed.controller.trendSubtitleLabel, controller.trendSubtitleLabel)
+            ] {
+                XCTAssertEqual(label.text, expected.text)
+                let name = "«\(expected.text ?? "")» at \(width)"
+                let frame = label.convert(label.bounds, to: try card(containing: label))
+                let coldFrame = expected.convert(expected.bounds, to: try card(containing: expected))
+                XCTAssertEqual(frame.width, coldFrame.width, accuracy: 0.01, "\(name): wrapped at the old width")
+                XCTAssertEqual(frame.height, coldFrame.height, accuracy: 0.01, name)
+                XCTAssertEqual(frame.minY, coldFrame.minY, accuracy: 0.01, name)
+            }
+        }
+    }
+
+    /// Every appearance reloads, usually with the same copy. The re-measure
+    /// starts each label from zero width; a one-line «Стабильно» then measures
+    /// exactly as before, and must still be laid out again at its width.
+    func testReloadingTheSameCopyKeepsTheTrendLabels() throws {
+        for width in [narrow, wide] {
+            let screen = try hosted(.large, width: width, trend: nil)
+            let labels = [screen.controller.trendHeadlineLabel, screen.controller.trendSubtitleLabel]
+            let before = labels.map(\.frame)
+            XCTAssertGreaterThan(before[0].width, 0)
+            screen.controller.viewModel.loadData()
+            screen.window.layoutIfNeeded()
+            for (label, frame) in zip(labels, before) {
+                XCTAssertEqual(label.frame, frame, "«\(label.text ?? "")» at \(width) moved on a reload")
+            }
         }
     }
 
@@ -228,20 +332,19 @@ final class StatisticsDynamicTypeTests: XCTestCase {
     private var lastSlip: String { Localized.format("statistics.last_slip", "28 сентября") }
 
     /// The tab on its own stores, in a window at `category`. Three snoozes on
-    /// the last Wednesday make it the worst weekday, so the headline the view
-    /// model renders is the same every day.
+    /// the Wednesday of the week before last: the view model then says the
+    /// same on every day of the week — Wednesday is the worst day, and this
+    /// week and the last are even («Стабильно»). `trend: nil` keeps that copy.
     private func hosted(
-        _ category: UIContentSizeCategory, width: CGFloat, subtitle: String = longSubtitle
+        _ category: UIContentSizeCategory, width: CGFloat, trend: TrendCopy? = .longest
     ) throws -> Screen {
         let defaults = makeIsolatedDefaults()
         XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(.rub), .frozen(.rub))
         let wakes = WakeEventStore(defaults: defaults)
         let repository = TransactionRepository(defaults: defaults, wakeStore: wakes)
         let calendar = StatisticsViewModel.mondayFirstCalendar
-        var wednesday = calendar.startOfDay(for: Date())
-        repeat {
-            wednesday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: wednesday))
-        } while calendar.component(.weekday, from: wednesday) != 4
+        let thisWeek = try XCTUnwrap(calendar.dateInterval(of: .weekOfYear, for: Date())).start
+        let wednesday = try XCTUnwrap(calendar.date(byAdding: .day, value: -14 + 2, to: thisWeek))
         let noon = try XCTUnwrap(calendar.date(byAdding: .hour, value: 12, to: wednesday))
         for _ in 0..<3 {
             XCTAssertTrue(repository.record(Transaction(type: .charge, amount: 50, currency: .rub, createdAt: noon)))
@@ -263,12 +366,17 @@ final class StatisticsDynamicTypeTests: XCTestCase {
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: 874)
         window.traitOverrides.preferredContentSizeCategory = category
+        window.updateTraitsIfNeeded()
         hostWindows.append(window)
         window.rootViewController = controller
         // Unhiding runs `viewWillAppear`, which sets the real texts; nothing
         // has been laid out yet, so the fixture's texts get the first layout.
         window.isHidden = false
-        applyFixture(to: controller, subtitle: subtitle)
+        for label in [controller.trendHeadlineLabel, controller.trendSubtitleLabel] {
+            XCTAssertEqual(label.preferredMaxLayoutWidth, 0, "a layout ran before the fixture")
+        }
+        XCTAssertEqual(model.trendDirection, .same, "the seed no longer gives an even fortnight")
+        try applyFixture(to: controller, trend: trend)
         window.layoutIfNeeded()
         XCTAssertEqual(controller.traitCollection.preferredContentSizeCategory, category, "override did not land")
         XCTAssertFalse(controller.scrollView.isHidden, "the cards are not on screen")
@@ -276,21 +384,22 @@ final class StatisticsDynamicTypeTests: XCTestCase {
         return Screen(window: window, controller: controller)
     }
 
-    /// Replaces the date-dependent content with the values main was measured
-    /// with. Before the first layout, as `viewWillAppear` does with the real
-    /// ones: the two wrapping trend labels keep the width of the text they
-    /// first laid out (`SPWrappingLabel`), so a fixture set after it would be
-    /// measured against whatever this week's copy happened to be.
-    private func applyFixture(to controller: StatisticsViewController, subtitle: String) {
+    /// Replaces the content that follows the calendar with the values main
+    /// was measured with. Before the first layout, as `viewWillAppear` does
+    /// with the real ones: the two wrapping trend labels keep the width of
+    /// the text they first laid out (`SPWrappingLabel`), so a fixture set
+    /// after it would be measured against the view model's copy. The arrow's
+    /// image is set too: its glyph, and so its frame, follows the direction.
+    private func applyFixture(to controller: StatisticsViewController, trend: TrendCopy?) throws {
         controller.streakBigLabel.text = "12"
         controller.streakBigWordLabel.text = dayWord
         controller.streakMetaLabel.text = lastSlip
         let calendar = StatisticsViewModel.mondayFirstCalendar
-        let june = calendar.date(from: DateComponents(year: 2026, month: 6, day: 1)) ?? Date()
+        let june = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 1)))
         let statuses: [StatisticsViewModel.DayStatus] = [.woke, .light, .heavy, .empty]
-        controller.heatmapView.days = (0..<35).map { offset in
+        controller.heatmapView.days = try (0..<35).map { offset in
             StatisticsViewModel.HeatmapDay(
-                date: calendar.date(byAdding: .day, value: offset, to: june) ?? june,
+                date: try XCTUnwrap(calendar.date(byAdding: .day, value: offset, to: june)),
                 status: statuses[offset % 4], snoozes: offset % 4, spent: 0, isInCurrentMonth: offset < 30
             )
         }
@@ -298,14 +407,17 @@ final class StatisticsDynamicTypeTests: XCTestCase {
         controller.weekdayBarsView.stats = zip(StatisticsViewModel.weekdayShortLabels, averages).map {
             StatisticsViewModel.WeekdayStat(label: $0, average: $1, isWorst: $1 == 2.5)
         }
-        controller.trendHeadlineLabel.text = Localized.text("statistics.trend.worse")
-        controller.trendSubtitleLabel.text = subtitle
-        controller.trendWeekValueLabel.text = "12"
-        controller.trendArrowView.isHidden = false
         controller.trendBarsView.apply(
-            points: [3, 5, 2, 4, 6, 1, 3, 12].enumerated().map { .init(count: $1, isCurrent: $0 == 7) },
-            direction: .worse
+            points: [3, 5, 2, 4, 6, 1, 3, 7].enumerated().map { .init(count: $1, isCurrent: $0 == 7) },
+            direction: trend?.direction ?? .same
         )
+        guard let trend else { return }
+        controller.trendHeadlineLabel.text = trend.headline
+        controller.trendSubtitleLabel.text = trend.subtitle
+        // Not "12", so the count is found by its own text, not the streak's.
+        controller.trendWeekValueLabel.text = "7"
+        controller.trendArrowView.isHidden = trend.direction == .same
+        controller.trendArrowView.image = StatisticsViewController.trendArrowImage(for: trend.direction)
     }
 
     private func set(_ screen: Screen, to category: UIContentSizeCategory) {
@@ -319,12 +431,24 @@ final class StatisticsDynamicTypeTests: XCTestCase {
     }
 }
 
-// MARK: - Today's geometry (main 65cd789e)
+// MARK: - Today's geometry (measured on main)
 
 private extension StatisticsDynamicTypeTests {
 
     /// A frame measured on main. `width == nil` for a label whose width now
     /// comes from a `.fill` stack — see `testAtTheDefaultSizeTheTabIsUnchanged`.
+    /// A label, the fixed font it is designed in and the style it grows on.
+    struct Role {
+        let label: UILabel
+        let fixed: UIFont
+        let style: UIFont.TextStyle
+        init(_ label: UILabel, _ fixed: UIFont, _ style: UIFont.TextStyle) {
+            self.label = label
+            self.fixed = fixed
+            self.style = style
+        }
+    }
+
     struct Pin {
         let view: UIView
         let root: UIView
@@ -336,6 +460,7 @@ private extension StatisticsDynamicTypeTests {
 
     func assertTodaysGeometry(_ screen: Screen, width: CGFloat) throws {
         let controller = screen.controller
+        XCTAssertEqual(screen.window.screen.scale, 3, "the pins are in thirds of a point")
         let header = try XCTUnwrap(descendants(of: SPPageHeader.self, in: screen.view).first)
         XCTAssertEqual(header.bounds.height, 76, accuracy: 0.01, "header at \(width)")
         XCTAssertEqual(try XCTUnwrap(controller.heroCard).bounds.height, width == narrow ? 485 : 505, accuracy: 0.01)
@@ -428,7 +553,7 @@ private extension StatisticsDynamicTypeTests {
             Pin(view: try label(Localized.text("statistics.trend.week_caption"), in: trend), root: trend,
                 x: content + 20 - caption, y: 44 + 2.0 / 3, width: caption, height: 18),
             Pin(view: controller.trendWeekValueLabel, root: trend,
-                x: content + 20 - 24, y: 64 + 2.0 / 3, width: 24, height: 26 + 2.0 / 3),
+                x: content + 20 - 12, y: 64 + 2.0 / 3, width: 12, height: 26 + 2.0 / 3),
             Pin(view: controller.trendBarsView, root: trend, x: 20, y: 135 + 1.0 / 3, width: content, height: 100),
             Pin(view: try label(Localized.text("statistics.trend.axis_start"), in: trend), root: trend,
                 x: 20, y: 243 + 1.0 / 3, width: axisLeft, height: 18),
@@ -465,13 +590,16 @@ private extension StatisticsDynamicTypeTests {
         ]
     }
 
-    /// Visible, non-empty labels of the slice, keyed by root, text and slot.
+    /// Visible, non-empty labels of the slice, keyed by root, text and
+    /// occurrence: the n-th label with that text in the root, in view order.
     func labelFrames(in screen: Screen) throws -> [String: CGRect] {
         var frames: [String: CGRect] = [:]
         for (index, root) in try scaledRoots(in: screen).enumerated() {
             for label in visibleLabels(in: root) {
-                let key = "\(index)|\(label.attributedText?.string ?? "")|\(label.frame.minX)"
-                frames[key] = label.convert(label.bounds, to: root)
+                let text = label.attributedText?.string ?? ""
+                var occurrence = 0
+                while frames["\(index)|\(text)|\(occurrence)"] != nil { occurrence += 1 }
+                frames["\(index)|\(text)|\(occurrence)"] = label.convert(label.bounds, to: root)
             }
         }
         return frames

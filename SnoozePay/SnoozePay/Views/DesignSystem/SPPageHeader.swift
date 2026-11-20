@@ -43,14 +43,14 @@ final class SPPageHeader: UIView {
         backgroundColor = AppColors.bg0
         configure()
         renderTitle()
-        // Attributed, so `adjustsFontForContentSizeCategory` cannot regrow it.
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SPPageHeader, _) in
-            view.renderTitle()
-        }
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPPageHeader, _) in
                 // CALayer-backed colours don't auto-resolve on trait change.
                 view.bottomHairline.backgroundColor = AppColors.whiteOverlay06
+            }
+            // Attributed, so `adjustsFontForContentSizeCategory` cannot regrow it.
+            registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SPPageHeader, _) in
+                view.renderTitle()
             }
         }
     }

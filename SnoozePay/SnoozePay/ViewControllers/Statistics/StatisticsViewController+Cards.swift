@@ -285,28 +285,21 @@ extension StatisticsViewController {
     /// (`AppTypography.stacksDenseRows`) it drops under the headline, aligned
     /// left: beside it, a grown headline has less room than its longest word.
     ///
-    /// The wrapping labels keep the width of their last layout
-    /// (`SPWrappingLabel`), so a live change re-measures them from no width,
-    /// as a cold start does; otherwise a grown headline breaks mid-word in
-    /// today's 141pt. Not on the move into the window: nothing is measured yet.
+    /// A live change re-measures the wrapping labels (`remeasureTrendText`);
+    /// otherwise a grown headline breaks mid-word in today's 141pt. Not on the
+    /// move into the window: nothing is measured yet.
     private func arrangeWithTextSize(trendSummary row: UIStackView) {
-        let labels = [trendHeadlineLabel, trendSubtitleLabel]
         let weekColumn = row.arrangedSubviews.last as? UIStackView
         let weekLabels = weekColumn?.arrangedSubviews.compactMap { $0 as? UILabel } ?? []
         weekLabels.forEach { $0.setContentCompressionResistancePriority(UILayoutPriority(751), for: .horizontal) }
-        let arrange = { (row: UIStackView, remeasure: Bool) in
+        let arrange = { [weak self] (row: UIStackView, remeasure: Bool) in
             let stacked = AppTypography.stacksDenseRows(row.traitCollection.preferredContentSizeCategory)
             row.axis = stacked ? .vertical : .horizontal
             row.alignment = stacked ? .fill : .top
             row.distribution = stacked ? .fill : .equalSpacing
             weekColumn?.alignment = stacked ? .leading : .trailing
             weekLabels.forEach { $0.textAlignment = stacked ? .natural : .right }
-            guard remeasure else { return }
-            for label in labels {
-                label.preferredMaxLayoutWidth = 0
-                label.frame.size.width = 0
-                label.invalidateIntrinsicContentSize()
-            }
+            if remeasure { self?.remeasureTrendText() }
         }
         arrange(row, false)
         row.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (row: UIStackView, previous) in

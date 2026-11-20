@@ -147,7 +147,7 @@ final class StatisticsHeatmapView: UIView {
         return max(8, floor((bounds.width - totalGutter) / CGFloat(Self.columnCount)))
     }
 
-    private func frameForCell(at index: Int) -> CGRect {
+    private func frameForCell(at index: Int, headerHeight: CGFloat) -> CGRect {
         let side = cellSide
         let row = index / Self.columnCount
         let column = index % Self.columnCount
@@ -155,23 +155,24 @@ final class StatisticsHeatmapView: UIView {
         // fractional slot so the 7th column stays flush with the right edge.
         let slot = (bounds.width + Self.cellSpacing) / CGFloat(Self.columnCount)
         let x = CGFloat(column) * slot
-        let y = scaledHeaderHeight + Self.cellSpacing + CGFloat(row) * (side + Self.cellSpacing)
+        let y = headerHeight + Self.cellSpacing + CGFloat(row) * (side + Self.cellSpacing)
         return CGRect(x: x, y: y, width: side, height: side)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let slot = (bounds.width + Self.cellSpacing) / CGFloat(Self.columnCount)
+        let headerHeight = scaledHeaderHeight
         for (index, label) in headerLabels.enumerated() {
             label.frame = CGRect(
                 x: CGFloat(index) * slot,
                 y: 0,
                 width: slot - Self.cellSpacing,
-                height: scaledHeaderHeight
+                height: headerHeight
             )
         }
         for (index, cell) in cellViews.enumerated() {
-            cell.frame = frameForCell(at: index)
+            cell.frame = frameForCell(at: index, headerHeight: headerHeight)
         }
         layoutSelectionOverlay()
         invalidateIntrinsicContentSize()
@@ -224,7 +225,7 @@ final class StatisticsHeatmapView: UIView {
 
     private func layoutSelectionOverlay() {
         guard let index = selectedIndex, index < cellViews.count else { return }
-        let cellFrame = frameForCell(at: index)
+        let cellFrame = frameForCell(at: index, headerHeight: scaledHeaderHeight)
         ringView.frame = cellFrame.insetBy(dx: -Self.ringInset, dy: -Self.ringInset)
 
         let size = tooltipView.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)

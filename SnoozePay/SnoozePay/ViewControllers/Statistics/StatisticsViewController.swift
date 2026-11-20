@@ -532,11 +532,9 @@ final class StatisticsViewController: UIViewController {
         let direction = viewModel.trendDirection
         trendHeadlineLabel.text = viewModel.trendHeadline
         trendSubtitleLabel.text = viewModel.trendSubtitle
+        remeasureTrendText()
         trendArrowView.isHidden = direction == .same
-        trendArrowView.image = UIImage(
-            systemName: direction == .better ? "arrow.down.right" : "arrow.up.right",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
-        )
+        trendArrowView.image = Self.trendArrowImage(for: direction)
         trendArrowView.tintColor = Self.trendColor(for: direction)
         trendWeekValueLabel.text = "\(viewModel.thisWeekCount)"
         trendWeekValueLabel.textColor = Self.trendColor(for: direction)
@@ -548,6 +546,32 @@ final class StatisticsViewController: UIViewController {
 
 /// Outside the class body to keep it under SwiftLint's `type_body_length`.
 extension StatisticsViewController {
+
+    /// Puts the two wrapping trend labels back where a cold start has them:
+    /// no preferred width and no width of their own, so each measures one
+    /// unwrapped line and settles on the width the next layout gives it.
+    /// `SPWrappingLabel` keeps the width of its last layout, so a new copy or
+    /// text size would otherwise wrap at the old width (#1111).
+    func remeasureTrendText() {
+        for label in [trendHeadlineLabel, trendSubtitleLabel] {
+            label.preferredMaxLayoutWidth = 0
+            label.frame.size.width = 0
+            label.invalidateIntrinsicContentSize()
+            // Asked for, not left to the width change: the label has to get
+            // its width back even when it measures the same (one line, at a
+            // capped size).
+            label.setNeedsLayout()
+            label.superview?.setNeedsLayout()
+        }
+    }
+
+    /// Down-right for fewer snoozes than last week, up-right otherwise.
+    static func trendArrowImage(for direction: StatisticsViewModel.TrendDirection) -> UIImage? {
+        UIImage(
+            systemName: direction == .better ? "arrow.down.right" : "arrow.up.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        )
+    }
 
     /// The headline at the label's own text size. Attributed text, so
     /// `adjustsFontForContentSizeCategory` cannot regrow it: `makeWeekdayCard`
