@@ -33,6 +33,11 @@ final class ProgressiveScaleCellLayoutTests: XCTestCase {
         // Armed: the chain row is the widest row and carries its full-colour
         // steps only while the mode is on (#688 keeps a muted copy when off).
         cell.configure(isOn: true, chain: [50, 100, 200, 400], currency: .rub, accessibilityChain: "")
+        // These measurements are the default size's; from XL the card
+        // rearranges (#1111), so a simulator set to large text must not leak in.
+        cell.traitOverrides.preferredContentSizeCategory = .large
+        cell.updateTraitsIfNeeded()
+        XCTAssertEqual(cell.traitCollection.preferredContentSizeCategory, .large, "override did not land")
 
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: cardWidth, height: 400))
         window.isHidden = false

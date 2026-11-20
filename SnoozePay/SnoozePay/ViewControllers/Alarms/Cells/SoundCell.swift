@@ -24,7 +24,8 @@ final class SoundCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.sound.title")
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.scaledBodyLg
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -32,7 +33,8 @@ final class SoundCell: UITableViewCell {
 
     private let soundNameLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -54,11 +56,18 @@ final class SoundCell: UITableViewCell {
     /// dedicated picker screen, so this fires only if the host wires it.
     var onPreviewTapped: (() -> Void)?
 
+    private lazy var rowLayout = DisclosureRowLayout(
+        icon: iconView, title: titleLabel, value: soundNameLabel, chevron: chevronView, in: contentView
+    )
+
     // MARK: - Init
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: SoundCell, _) in
+            cell.rowLayout.apply(cell.traitCollection.preferredContentSizeCategory)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -87,12 +96,10 @@ final class SoundCell: UITableViewCell {
                 equalTo: contentView.leadingAnchor,
                 constant: AppSpacing.cardHorizontalPadding
             ),
-            iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 24),
             iconView.heightAnchor.constraint(equalToConstant: 24),
 
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
-            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             chevronView.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor,
@@ -100,14 +107,10 @@ final class SoundCell: UITableViewCell {
             ),
             chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            soundNameLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sp2),
-            soundNameLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            soundNameLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: AppSpacing.sp2
-            ),
-
             contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
         ])
+        // Icon, title and sound name: one line as before, or stacked from XL.
+        rowLayout.apply(traitCollection.preferredContentSizeCategory)
     }
 
     override func prepareForReuse() {

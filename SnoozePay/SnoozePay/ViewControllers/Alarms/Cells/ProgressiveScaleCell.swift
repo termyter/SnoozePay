@@ -32,7 +32,8 @@ final class ProgressiveScaleCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.progressive.title")
-        label.font = AppTypography.h4
+        label.font = AppTypography.scaled(AppTypography.h4, as: .headline)
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg1
         return label
     }()
@@ -40,18 +41,18 @@ final class ProgressiveScaleCell: UITableViewCell {
     private let subtitleLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.progressive.subtitle")
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         return label
     }()
 
     /// `50 → 100 → 200 → 400 ₽` — mono digits, warn-tinted start, pain-tinted
-    /// tail, final value rendered through `MoneyFormatter`.
+    /// tail, final value rendered through `MoneyFormatter`. One shrinking line
+    /// up to `.large`; from XL it wraps at the arrows (`applyLayout`).
     private let chainLabel: UILabel = {
         let label = UILabel()
-        label.numberOfLines = 1
-        label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.7
         return label
     }()
@@ -76,11 +77,21 @@ final class ProgressiveScaleCell: UITableViewCell {
 
     private let toggle = SPSwitch()
 
+    /// Flame + title: side by side, or from XL the flame above the title, so
+    /// the title has the column's full width (`applyLayout`).
+    private let headerRow = UIStackView()
+
     /// What `configure` last rendered, kept so the switch can repaint the
     /// chain in place without the host re-`configure`-ing the cell.
     private var chain: [Double] = []
     private var currency: Currency = .rub
     private var accessibilityChain = ""
+
+    /// Up to `.large`: the switch beside the column, as before.
+    private var switchBeside: [NSLayoutConstraint] = []
+    /// From XL: the column takes the card's width and the switch drops under
+    /// it — at 2× «Прогрессивный» alone is wider than the column (#1111).
+    private var switchUnder: [NSLayoutConstraint] = []
 
     // MARK: - Callbacks
 
@@ -92,6 +103,10 @@ final class ProgressiveScaleCell: UITableViewCell {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         setupUI()
         toggle.addTarget(self, action: #selector(toggled), for: .valueChanged)
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: ProgressiveScaleCell, _) in
+            cell.applyLayout()
+            cell.applyArmedAppearance(cell.toggle.isOn)
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -103,9 +118,8 @@ final class ProgressiveScaleCell: UITableViewCell {
         backgroundView = surface
         selectionStyle = .none
 
-        let headerRow = UIStackView(arrangedSubviews: [iconView, titleLabel])
-        headerRow.axis = .horizontal
-        headerRow.alignment = .center
+        headerRow.addArrangedSubview(iconView)
+        headerRow.addArrangedSubview(titleLabel)
         headerRow.spacing = AppSpacing.sp2
 
         contentStack.addArrangedSubview(headerRow)
@@ -123,6 +137,13 @@ final class ProgressiveScaleCell: UITableViewCell {
         contentView.addSubview(contentStack)
         contentView.addSubview(toggle)
 
+        // A self-sized row still gets ~1pt of rounding slack, and on main the
+        // header row has always been the one to take it (measured: the
+        // subtitle starts 30.33pt below the column's top). The text rows hug
+        // one step harder, so that is a rule instead of a hugging tie.
+        subtitleLabel.setContentHuggingPriority(.defaultLow + 1, for: .vertical)
+        chainLabel.setContentHuggingPriority(.defaultLow + 1, for: .vertical)
+
         // Card padding 20pt on all sides (#231 `padding=20` rule); the switch
         // is top-aligned with the header row per the artboard's
         // `alignItems: flex-start`.
@@ -134,7 +155,10 @@ final class ProgressiveScaleCell: UITableViewCell {
                 equalTo: contentView.leadingAnchor,
                 constant: AppSpacing.cardHorizontalPadding
             ),
-            contentStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5),
+            contentStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5)
+        ])
+        let padding = AppSpacing.cardHorizontalPadding
+        switchBeside = [
             contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5),
             // `equalTo`, not `lessThanOrEqualTo`: the column has to CLAIM the
             // width the switch leaves it, which is what `flex: 1` does in the
@@ -142,13 +166,34 @@ final class ProgressiveScaleCell: UITableViewCell {
             contentStack.trailingAnchor.constraint(
                 equalTo: toggle.leadingAnchor, constant: -AppSpacing.sp3
             ),
-
-            toggle.trailingAnchor.constraint(
-                equalTo: contentView.trailingAnchor,
-                constant: -AppSpacing.cardHorizontalPadding
-            ),
+            toggle.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
             toggle.topAnchor.constraint(equalTo: contentView.topAnchor, constant: AppSpacing.sp5)
-        ])
+        ]
+        // Top-down with an open bottom: no slack to share out.
+        switchUnder = [
+            contentStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -padding),
+            toggle.topAnchor.constraint(equalTo: contentStack.bottomAnchor, constant: AppSpacing.sp3),
+            toggle.leadingAnchor.constraint(equalTo: contentStack.leadingAnchor),
+            toggle.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -AppSpacing.sp5)
+        ]
+        applyLayout()
+    }
+
+    /// The arrangement for the cell's content size category (#1111): today's
+    /// up to `.large`; from XL (`AppTypography.stacksDenseRows`) the switch
+    /// goes under the column and the flame above the title, and the title and
+    /// the chain wrap — the chain only at its arrows, since each amount is
+    /// joined by narrow no-break spaces. Beside the flame, «Прогрессивный»
+    /// alone is wider than a 375pt card's column at 2×.
+    private func applyLayout() {
+        let stacked = AppTypography.stacksDenseRows(traitCollection.preferredContentSizeCategory)
+        NSLayoutConstraint.deactivate(stacked ? switchBeside : switchUnder)
+        NSLayoutConstraint.activate(stacked ? switchUnder : switchBeside)
+        headerRow.axis = stacked ? .vertical : .horizontal
+        headerRow.alignment = stacked ? .leading : .center
+        titleLabel.numberOfLines = stacked ? 0 : 1
+        chainLabel.numberOfLines = stacked ? 0 : 1
+        chainLabel.adjustsFontSizeToFitWidth = !stacked
     }
 
     override func prepareForReuse() {
@@ -187,7 +232,9 @@ final class ProgressiveScaleCell: UITableViewCell {
         iconView.tintColor = AppColors.pain400
         iconView.alpha = isOn ? 1 : Self.disabledFlameAlpha
         chainLabel.isHidden = false
-        chainLabel.attributedText = Self.chainText(for: chain, currency: currency, isArmed: isOn)
+        chainLabel.attributedText = Self.chainText(
+            for: chain, currency: currency, isArmed: isOn, traits: traitCollection
+        )
         // A UILabel takes no touches, so the chain is not interactive in
         // either state; VoiceOver is told the rule is off rather than reading
         // the prices as if they applied. Exactly one off signal (#1113): the
@@ -213,9 +260,14 @@ final class ProgressiveScaleCell: UITableViewCell {
     ///
     /// Disarmed, every step takes `fg3` — the card's own meta ink — so the
     /// shape and numbers stay but nothing reads as a live price.
-    private static func chainText(for chain: [Double], currency: Currency, isArmed: Bool) -> NSAttributedString {
+    ///
+    /// Both sizes grow along `.subheadline` at `traits`' content size
+    /// category, so the last step keeps its lead over the others (#1111).
+    private static func chainText(
+        for chain: [Double], currency: Currency, isArmed: Bool, traits: UITraitCollection
+    ) -> NSAttributedString {
         guard chain.count == 4 else { return NSAttributedString() }
-        let stepFont = AppFonts.mono(.semibold, 14)
+        let stepFont = AppTypography.scaled(AppFonts.mono(.semibold, 14), as: .subheadline, compatibleWith: traits)
         let arrowAttributes: [NSAttributedString.Key: Any] = [
             .font: stepFont,
             .foregroundColor: AppColors.fg4
@@ -234,7 +286,7 @@ final class ProgressiveScaleCell: UITableViewCell {
         }
         result.append(MoneyFormatter.quotedAttributed(
             chain[3], currency: currency,
-            digitsFont: AppFonts.mono(.bold, 16),
+            digitsFont: AppTypography.scaled(AppFonts.mono(.bold, 16), as: .subheadline, compatibleWith: traits),
             color: isArmed ? AppColors.pain400 : AppColors.fg3
         ))
         return result
