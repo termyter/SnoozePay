@@ -42,12 +42,13 @@ final class OnboardingPenaltyPill: UIView {
 
     /// `amount` is one low-tier snooze in the price context (#1109); `nil`
     /// (scale unavailable) hides the pill rather than invent a number.
-    init(amount: String?) {
+    /// `traits` sizes the amount for Dynamic Type (#1111).
+    init(amount: String?, traits: UITraitCollection) {
         gradient = CAGradientLayer()
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         configureChrome()
-        configureLabel(amount: amount ?? "")
+        configureLabel(amount: amount ?? "", traits: traits)
         isHidden = amount == nil
     }
 
@@ -70,14 +71,21 @@ final class OnboardingPenaltyPill: UIView {
         layer.masksToBounds = false
     }
 
-    private func configureLabel(amount: String) {
+    private func configureLabel(amount: String, traits: UITraitCollection) {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.text = "−" + amount
-        label.font = AppTypography.moneySm  // mono digits for the penalty pill (#289)
+        // Mono digits for the penalty pill (#289), 14pt at the default size.
+        label.font = AppTypography.scaled(AppTypography.moneySm, as: .subheadline, compatibleWith: traits)
         label.textColor = AppColors.fgOnWarn
         addSubview(label)
+        // 30pt tall as before; a grown amount (≈ 19pt line at 14pt) makes it taller.
+        let today = heightAnchor.constraint(equalToConstant: 30)
+        today.priority = .defaultLow
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 30),
+            today,
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 30),
+            label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 5),
+            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -5),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14)
@@ -97,22 +105,28 @@ final class OnboardingPenaltyPill: UIView {
 }
 
 /// Numbered explainer row used on Onboarding step 2 — 32×32 badge with a
-/// mono digit, title h4, body meta.
+/// mono digit, title h4, body meta. The title and body grow with Dynamic Type
+/// (`traits`, #1111); the badge is an ordinal marker and keeps its size.
 final class OnboardingStepRow: UIView {
 
-    init(number: String, title: String, body: String) {
+    init(number: String, title: String, body: String, traits: UITraitCollection) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
         let badge = makeBadge(number: number)
-        let titleLabel = makeTitle(text: title)
-        let bodyLabel = makeBody(text: body)
+        let titleLabel = makeTitle(text: title, traits: traits)
+        let bodyLabel = makeBody(text: body, traits: traits)
 
         addSubview(badge)
         addSubview(titleLabel)
         addSubview(bodyLabel)
 
+        // The row is exactly as tall as its text (or the badge): nothing else
+        // pins its height, so without this the row's height is ambiguous.
+        let hugsText = bottomAnchor.constraint(equalTo: bodyLabel.bottomAnchor)
+        hugsText.priority = .defaultLow
         NSLayoutConstraint.activate([
+            hugsText,
             badge.widthAnchor.constraint(equalToConstant: 32),
             badge.heightAnchor.constraint(equalToConstant: 32),
             badge.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -147,21 +161,21 @@ final class OnboardingStepRow: UIView {
         return badge
     }
 
-    private func makeTitle(text: String) -> UILabel {
+    private func makeTitle(text: String, traits: UITraitCollection) -> UILabel {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.text = text
-        label.font = AppTypography.h4
+        label.font = AppTypography.scaled(AppTypography.h4, as: .headline, compatibleWith: traits)
         label.textColor = .white
         label.numberOfLines = 0
         return label
     }
 
-    private func makeBody(text: String) -> UILabel {
+    private func makeBody(text: String, traits: UITraitCollection) -> UILabel {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.text = text
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaled(AppTypography.meta, as: .footnote, compatibleWith: traits)
         label.textColor = AppColors.fg2
         label.numberOfLines = 0
         return label
@@ -213,11 +227,18 @@ final class OnboardingPageDot: UIView {
 /// caps tag when applicable, description meta, trailing mono amount. When
 /// `isSelectedOption` is true the fill takes a 8% money tint, the border
 /// becomes `money400` at 40%, and the amount glyph switches to `money300`.
+///
+/// The text is sized for `traits` (Dynamic Type, #1111). From XL
+/// (`AppTypography.stacksDenseRows`) the tag goes under the title and the
+/// amount under the description: beside a grown amount the text column of a
+/// 375pt card would break «Попробовать» mid-word.
 final class OnboardingDepositOptionView: UIControl {
 
     private let option: OnboardingViewController.DepositOption
     /// Trims the card's vertical padding on compact-height devices (#244).
     private let isCompact: Bool
+    private let traits: UITraitCollection
+    private var stacked: Bool { AppTypography.stacksDenseRows(traits.preferredContentSizeCategory) }
     private let titleLabel = UILabel()
     private let popularLabel = UILabel()
     private let descriptionLabel = UILabel()
@@ -233,9 +254,10 @@ final class OnboardingDepositOptionView: UIControl {
         didSet { SPSupport.animatePress(self, pressed: isHighlighted) }
     }
 
-    init(option: OnboardingViewController.DepositOption, isCompact: Bool = false) {
+    init(option: OnboardingViewController.DepositOption, isCompact: Bool = false, traits: UITraitCollection) {
         self.option = option
         self.isCompact = isCompact
+        self.traits = traits
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         configureChrome()
@@ -256,19 +278,24 @@ final class OnboardingDepositOptionView: UIControl {
     private func configureLabels() {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.text = option.title
-        titleLabel.font = AppTypography.h4
+        titleLabel.font = AppTypography.scaled(AppTypography.h4, as: .headline, compatibleWith: traits)
         titleLabel.textColor = .white
+        // One word on one line. Should the row ever run short, the tag beside
+        // it (750) gives way first, so no tie is broken by subview order.
+        titleLabel.setContentCompressionResistancePriority(.defaultHigh + 1, for: .horizontal)
 
         popularLabel.translatesAutoresizingMaskIntoConstraints = false
         if option.isPopular {
+            let base = AppFonts.sans(.bold, 10)
+            let font = AppTypography.scaled(base, as: .caption2, compatibleWith: traits)
             popularLabel.attributedText = NSAttributedString(
                 // Stored sentence-case; the caps face is presentation (see `Localized`,
                 // «`_caps` keys»).
                 string: Localized.text("onboarding.deposit_option.popular_caps")
                     .uppercased(with: AppLocale.display),
                 attributes: [
-                    .font: AppFonts.sans(.bold, 10),
-                    .kern: 10 * 0.12,
+                    .font: font,
+                    .kern: AppTypography.kerning(10 * 0.12, of: base, scaledTo: font),
                     .foregroundColor: AppColors.money300
                 ]
             )
@@ -278,7 +305,7 @@ final class OnboardingDepositOptionView: UIControl {
 
         descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
         descriptionLabel.text = option.description
-        descriptionLabel.font = AppTypography.meta
+        descriptionLabel.font = AppTypography.scaled(AppTypography.meta, as: .footnote, compatibleWith: traits)
         descriptionLabel.textColor = AppColors.fg3
         descriptionLabel.numberOfLines = 0
         // The amount label is incompressible; the description is the side that
@@ -287,13 +314,15 @@ final class OnboardingDepositOptionView: UIControl {
         descriptionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         amountLabel.translatesAutoresizingMaskIntoConstraints = false
+        let amountFont = AppTypography.scaled(AppTypography.moneyMd, as: .title3, compatibleWith: traits)
         // «—» while the price context is unavailable (#1109), as Settings shows.
         amountLabel.attributedText = option.money.map {
-            ExampleMoneyCopy.attributed($0, digitsFont: AppTypography.moneyMd)
-        } ?? NSAttributedString(string: "—", attributes: [.font: AppTypography.moneyMd])
-        amountLabel.font = AppTypography.moneyMd
+            ExampleMoneyCopy.attributed($0, digitsFont: amountFont)
+        } ?? NSAttributedString(string: "—", attributes: [.font: amountFont])
+        amountLabel.font = amountFont
         amountLabel.textColor = AppColors.fg1
-        amountLabel.setContentHuggingPriority(.required, for: .horizontal)
+        // Stacked, the amount spans the column (`.fill`) and draws at its leading edge.
+        amountLabel.setContentHuggingPriority(stacked ? .defaultLow : .required, for: .horizontal)
         amountLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
     }
 
@@ -304,11 +333,12 @@ final class OnboardingDepositOptionView: UIControl {
         let titleSpacer = UIView()
         titleSpacer.translatesAutoresizingMaskIntoConstraints = false
         titleSpacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        titleSpacer.isHidden = stacked
         let titleRow = UIStackView(arrangedSubviews: [titleLabel, popularLabel, titleSpacer])
         titleRow.translatesAutoresizingMaskIntoConstraints = false
-        titleRow.axis = .horizontal
-        titleRow.spacing = AppSpacing.sp2
-        titleRow.alignment = .center
+        titleRow.axis = stacked ? .vertical : .horizontal
+        titleRow.spacing = stacked ? 2 : AppSpacing.sp2
+        titleRow.alignment = stacked ? .leading : .center
 
         // `.fill`, not `.leading`: under `.leading` each arranged subview keeps
         // its own intrinsic width, so the multi-line description asked for its
@@ -325,9 +355,9 @@ final class OnboardingDepositOptionView: UIControl {
 
         let rowStack = UIStackView(arrangedSubviews: [textStack, amountLabel])
         rowStack.translatesAutoresizingMaskIntoConstraints = false
-        rowStack.axis = .horizontal
-        rowStack.alignment = .center
-        rowStack.spacing = AppSpacing.sp3
+        rowStack.axis = stacked ? .vertical : .horizontal
+        rowStack.alignment = stacked ? .fill : .center
+        rowStack.spacing = stacked ? AppSpacing.sp2 : AppSpacing.sp3
         rowStack.isUserInteractionEnabled = false
 
         // 16pt canonical → 12pt vertical on SE so three cards clear the CTA.

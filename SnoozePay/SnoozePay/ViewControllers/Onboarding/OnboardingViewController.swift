@@ -160,13 +160,7 @@ final class OnboardingViewController: UIViewController {
         configuration.contentInsets = NSDirectionalEdgeInsets(
             top: 6, leading: 14, bottom: 6, trailing: 14
         )
-        configuration.attributedTitle = AttributedString(
-            Localized.text("onboarding.button.skip"),
-            attributes: AttributeContainer([
-                .font: AppTypography.buttonSm,
-                .foregroundColor: AppColors.fg3
-            ])
-        )
+        // The title is set by `renderSkipTitle()`, sized for Dynamic Type.
         let button = UIButton(configuration: configuration)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.backgroundColor = AppColors.whiteOverlay06
@@ -223,7 +217,7 @@ final class OnboardingViewController: UIViewController {
     var dotsGapConstraint: NSLayoutConstraint?
 
     /// Internal page containers managed by `+Pages.buildPageStack()`.
-    var pageViews: [UIView] = []
+    var pageViews: [OnboardingPageView] = []
     /// Option cards rendered on page 3 — owned so we can recolour them on
     /// selection change.
     var depositOptionViews: [OnboardingDepositOptionView] = []
@@ -310,6 +304,15 @@ final class OnboardingViewController: UIViewController {
         installStepGlow()
         setupUI()
         updatePagerState(forPage: 0)
+        renderSkipTitle()
+        // Dynamic Type (#1111): every page is built for the current category,
+        // so a change rebuilds them, the same way a price-context change does.
+        let category: [UITrait] = [UITraitPreferredContentSizeCategory.self]
+        registerForTraitChanges(category) { (controller: OnboardingViewController, _) in
+            controller.renderSkipTitle()
+            controller.buildPageStack()
+            controller.view.setNeedsLayout()
+        }
     }
 
     override var prefersStatusBarHidden: Bool { true }
@@ -339,6 +342,16 @@ final class OnboardingViewController: UIViewController {
         }
         scrollView.contentSize = CGSize(width: width * CGFloat(pageCount), height: height)
         skipButton.layer.cornerRadius = skipButton.bounds.height / 2   // pill
+        // From XL a column can outgrow its page and scroll under the floating
+        // «Пропустить» pill and the dots, so it starts below the one and ends
+        // above the other. Below XL both clearances are 0: today's centring.
+        let grown = AppTypography.stacksDenseRows(traitCollection.preferredContentSizeCategory)
+        for page in pageViews {
+            page.setClearance(
+                top: grown ? skipButton.frame.maxY + AppSpacing.sp2 : 0,
+                bottom: grown ? scrollView.frame.maxY - dotsStack.frame.minY + AppSpacing.sp2 : 0
+            )
+        }
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -411,6 +424,17 @@ final class OnboardingViewController: UIViewController {
                 constant: -AppSpacing.sp4
             )
         ])
+    }
+
+    /// «Пропустить» in `buttonSm`, grown with Dynamic Type (14pt by default).
+    private func renderSkipTitle() {
+        skipButton.configuration?.attributedTitle = AttributedString(
+            Localized.text("onboarding.button.skip"),
+            attributes: AttributeContainer([
+                .font: AppTypography.scaled(AppTypography.buttonSm, as: .subheadline, compatibleWith: traitCollection),
+                .foregroundColor: AppColors.fg3
+            ])
+        )
     }
 
     private func wireActionTargets() {
