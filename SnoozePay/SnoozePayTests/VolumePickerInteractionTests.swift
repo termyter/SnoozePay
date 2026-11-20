@@ -4,9 +4,7 @@ import XCTest
 
 final class VolumePickerInteractionTests: XCTestCase {
     func testRoutedFadeChangesNotifyOncePreserveVolumeAndSurviveCreateAndEdit() throws {
-        let suite = "test.volume.interaction.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
         let monitor = AlarmBackendMonitor(
             probe: AlarmsListBackendGuardTests.StubProbe(result: .available),

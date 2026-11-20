@@ -53,13 +53,17 @@ final class MissingAlarmNotificationAudioTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // Silence and drain BEFORE taking the slot: work an earlier test queued
+        // would otherwise run after the slot was emptied and write into it.
+        AudioService.shared.stopAlarmSound()
+        drainMainQueue()
         defaults = makeIsolatedDefaults()
         repository = AlarmRepository(defaults: defaults, scheduler: NoopScheduler())
         delegate = AppDelegate()
         delegate.alarmRepository = repository
         delegate.criticalWarnings = CriticalWarningCenter(defaults: defaults)
         delegate.criticalWarnings.isForegroundActive = { false }
-        AudioService.shared.stopAlarmSound()
+        // Run whatever this setUp queued itself, into this test's own slot.
         drainMainQueue()
     }
 

@@ -20,7 +20,6 @@ final class ReferralPersonalCodeTests: XCTestCase {
 
     private var hosts: [ReferralPersonalCodeHost] = []
     private var pasteboardNames: [UIPasteboard.Name] = []
-    private var stores: [Store] = []
 
     override func tearDown() {
         for host in hosts.reversed() {
@@ -36,8 +35,6 @@ final class ReferralPersonalCodeTests: XCTestCase {
         hosts.removeAll()
         pasteboardNames.forEach { UIPasteboard.remove(withName: $0) }
         pasteboardNames.removeAll()
-        stores.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
-        stores.removeAll()
         super.tearDown()
     }
 
@@ -83,7 +80,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
     }
 
     func testPersistedServiceCodeReopensWithoutChangingReferralOrMoneyState() throws {
-        let store = try makeStore(code: "JKLM23")
+        let store = makeStore(code: "JKLM23")
         let before = store.domain
         let first = makeScreen { store.service.getMyCode() }
         try mount(first.controller)
@@ -102,7 +99,7 @@ final class ReferralPersonalCodeTests: XCTestCase {
     }
 
     func testFreshServicePersistsOnlyItsOwnCodeAndRetainsItOnReopen() throws {
-        let store = try makeStore()
+        let store = makeStore()
         let before = store.domain
         let screen = makeScreen { store.service.getMyCode() }
         XCTAssertNil(store.defaults.string(forKey: "referral_my_code"))
@@ -350,16 +347,13 @@ final class ReferralPersonalCodeTests: XCTestCase {
         [view] + view.subviews.flatMap { descendants(of: $0) }
     }
 
-    private func makeStore(code: String? = nil) throws -> Store {
-        let name = "test.referral.personal-code.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+    private func makeStore(code: String? = nil) -> Store {
+        let (defaults, name) = makeIsolatedSuite()
         defaults.set(750.0, forKey: "user_balance")
         defaults.set("XYZ789", forKey: "referral_applied_code")
         if let code { defaults.set(code, forKey: "referral_my_code") }
         let service = ReferralService(defaults: defaults, balanceService: makeWallet(defaults: defaults))
-        let store = Store(name: name, defaults: defaults, service: service)
-        stores.append(store)
-        return store
+        return Store(name: name, defaults: defaults, service: service)
     }
 
     private func makeWallet(defaults: UserDefaults) -> BalanceService {

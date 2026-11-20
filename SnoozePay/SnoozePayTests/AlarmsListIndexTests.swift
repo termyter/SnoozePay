@@ -3,21 +3,18 @@ import XCTest
 
 final class AlarmsListIndexTests: XCTestCase {
 
-    private var suite: String!
     private var defaults: UserDefaults!
     private var repository: AlarmRepository!
     private var scheduler: AlarmsListViewModelTests.StubScheduler!
 
     override func setUp() {
         super.setUp()
-        suite = "test.alarmsListIndices.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = makeIsolatedDefaults()
         scheduler = AlarmsListViewModelTests.StubScheduler()
         repository = AlarmRepository(defaults: defaults, scheduler: scheduler)
     }
 
     override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
         repository = nil
         scheduler = nil
         defaults = nil

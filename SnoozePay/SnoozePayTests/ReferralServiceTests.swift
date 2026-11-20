@@ -9,18 +9,14 @@ import XCTest
 final class ReferralServiceTests: XCTestCase {
 
     private var testDefaults: UserDefaults!
-    private var suiteName: String!
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.referral.\(UUID().uuidString)"
-        testDefaults = UserDefaults(suiteName: suiteName)!
+        testDefaults = makeIsolatedDefaults()
     }
 
     override func tearDown() {
-        testDefaults.removePersistentDomain(forName: suiteName)
         testDefaults = nil
-        suiteName = nil
         super.tearDown()
     }
 

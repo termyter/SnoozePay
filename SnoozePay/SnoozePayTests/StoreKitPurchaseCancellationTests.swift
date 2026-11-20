@@ -13,16 +13,12 @@ final class StoreKitPurchaseCancellationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suite = "StoreKitPurchaseCancellationTests.\(UUID())"
-        defaults = UserDefaults(suiteName: suite)!
+        let isolated = makeIsolatedSuite()
+        defaults = isolated.defaults
+        suite = isolated.name
         balance = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
         poster = LocalNotificationPosterSpy()
         store = StoreKitService(notificationPoster: poster, defaults: defaults)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
-        super.tearDown()
     }
 
     func testActualCancellationAndPendingBranchesEmitOnlyTheirOwnEventWithoutWalletWrites() async throws {

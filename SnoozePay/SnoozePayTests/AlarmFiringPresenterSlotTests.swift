@@ -30,25 +30,30 @@ final class AlarmFiringPresenterSlotTests: XCTestCase {
         }
     }
 
-    private static let suite = "AlarmFiringPresenterSlotTests"
     private var top: UIViewController?
     private var rootReady = true
     private var dismissed: [UIViewController] = []
     /// Outstanding dismissal completions; none runs unless a test runs it.
     private var completions: [() -> Void] = []
     private var lines: [Line] = []
-    private let defaults = UserDefaults(suiteName: suite) ?? .standard
+    /// A pool slot (#1118), taken in `setUp` and handed back from `tearDown`
+    /// where the fixed suite used to be wiped, so anything `tearDown` stops or
+    /// drains before that point still writes into a slot this test owns.
+    private var lease: IsolatedDefaultsLease<UserDefaults>!
+    private var defaults: UserDefaults { lease.defaults }
 
     /// Spends earlier suites' main-queue backlog here, not in the first
     /// test's first turn, which paid 3.6 s of it (#618's pattern).
     override func setUp() {
         super.setUp()
         drainMainQueue()
+        lease = IsolatedDefaultsPool.checkOut()
     }
 
     override func tearDown() {
         AudioService.shared.stopAlarmSound()
-        defaults.removePersistentDomain(forName: Self.suite)
+        IsolatedDefaultsPool.checkIn(lease)
+        lease = nil
         top = nil
         completions = []
         super.tearDown()

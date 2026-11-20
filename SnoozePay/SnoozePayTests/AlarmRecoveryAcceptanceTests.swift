@@ -30,9 +30,7 @@ final class AlarmRecoveryAcceptanceTests: XCTestCase {
 
     func testSettingsNativeRecoveryPreservesEveryHealthyWalletFieldOnSuccessAndFailure() throws {
         for cleanupFails in [false, true] {
-            let suite = "test.settings.healthyWalletRecovery.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suite)!
-            defer { defaults.removePersistentDomain(forName: suite) }
+            let defaults = makeIsolatedDefaults()
             let ledger = TransactionRepository(defaults: defaults, wakeStore: WakeEventStore(defaults: defaults))
             let wallet = BalanceService(defaults: defaults, transactionRepository: ledger,
                                         notificationCenter: NotificationCenter())
@@ -86,9 +84,7 @@ final class AlarmRecoveryAcceptanceTests: XCTestCase {
     }
 
     func testPartialNativeCleanupRetryCancelsOnlyRemainingIDBeforeCommitting() throws {
-        let suite = "test.native.partialRecoveryRetry.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let original = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
         let remaining = UUID(uuidString: "53000000-0000-0000-0000-000000000001")!
         let corrupt = Data("damaged alarm IDs cannot be trusted".utf8)

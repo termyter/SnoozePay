@@ -67,14 +67,11 @@ final class SettingsReferralIsolationTests: XCTestCase {
         [myCodeKey, appliedCodeKey, balanceKey, "balance_ledger_opening"]
     }
 
-    /// Name + store for every throwaway suite this case created, so tearDown
-    /// can delete the plists it left in the host container.
-    private var suites: [(name: String, defaults: UserDefaults)] = []
     private var hostWindows: [UIWindow] = []
     /// Cells are handed out `unowned`-ish by the table; hold them so
     /// `sut.friendCodeInput` (a `weak var`) survives to be asserted on.
     private var retainedCells: [UITableViewCell] = []
-    /// Named pasteboards this case created, torn down with the suites. Nothing
+    /// Named pasteboards this case created, removed in tearDown. Nothing
     /// in either test target touched `UIPasteboard` before this file, and the
     /// first thing to do so should not be the thing that clobbers the
     /// developer's clipboard.
@@ -84,8 +81,6 @@ final class SettingsReferralIsolationTests: XCTestCase {
         hostWindows.forEach { $0.isHidden = true }
         hostWindows.removeAll()
         retainedCells.removeAll()
-        suites.forEach { $0.defaults.removePersistentDomain(forName: $0.name) }
-        suites.removeAll()
         pasteboardNames.forEach { UIPasteboard.remove(withName: $0) }
         pasteboardNames.removeAll()
         super.tearDown()
@@ -93,11 +88,10 @@ final class SettingsReferralIsolationTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    /// A pool suite (#1118), emptied and returned after the test. `label`
+    /// only names the suite's role at the call site.
     private func makeSuite(_ label: String) -> UserDefaults {
-        let name = "test.settings.referral.\(label).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        suites.append((name: name, defaults: defaults))
-        return defaults
+        makeIsolatedDefaults()
     }
 
     /// A private pasteboard, removed in tearDown. Registered on the same line

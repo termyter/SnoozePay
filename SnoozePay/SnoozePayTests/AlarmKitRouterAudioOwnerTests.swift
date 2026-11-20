@@ -24,7 +24,6 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
     /// tone: the bundle's files are not what this pins.
     private static let toneSoundID = "nonexistent_test_sound"
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var router: AlarmKitActionRouter!
     private var poster: LocalNotificationPosterSpy!
@@ -33,8 +32,11 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmKitRouterAudioOwner.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        // Silence and drain BEFORE taking the slot: work an earlier test queued
+        // would otherwise run after the slot was emptied and write into it (#618).
+        AudioService.shared.stopAlarmSound()
+        drainMainQueue()
+        defaults = makeIsolatedDefaults()
         poster = LocalNotificationPosterSpy()
         router = AlarmKitActionRouter()
         router.alarmRepository = AlarmRepository(
@@ -43,8 +45,7 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
         )
         router.notificationPoster = poster
         router.present = { [weak self] in self?.presented.append($0) }
-        // Start from silence, with anything an earlier test queued already run (#618).
-        AudioService.shared.stopAlarmSound()
+        // Run whatever this setUp queued itself, into this test's own slot.
         drainMainQueue()
     }
 
@@ -53,7 +54,6 @@ final class AlarmKitRouterAudioOwnerTests: XCTestCase {
         drainMainQueue()
         router = nil
         poster = nil
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         presented = []
         lines = []

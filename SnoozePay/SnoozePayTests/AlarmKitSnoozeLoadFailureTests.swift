@@ -18,7 +18,6 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
 
     private typealias Line = (category: AppLogCategory, level: OSLogType, message: String)
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var router: AlarmKitActionRouter!
     private var poster: LocalNotificationPosterSpy!
@@ -27,8 +26,7 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        suiteName = "test.alarmKitSnoozeLoad.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
+        defaults = makeIsolatedDefaults()
         poster = LocalNotificationPosterSpy()
         router = AlarmKitActionRouter()
         router.alarmRepository = AlarmRepository(
@@ -49,7 +47,6 @@ final class AlarmKitSnoozeLoadFailureTests: XCTestCase {
         drainMainQueue()
         router = nil
         poster = nil
-        defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         presented = []
         lines = []

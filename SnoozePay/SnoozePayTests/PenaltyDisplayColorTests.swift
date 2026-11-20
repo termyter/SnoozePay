@@ -141,9 +141,7 @@ final class PenaltyDisplayColorTests: XCTestCase {
     /// A Settings screen on an isolated defaults suite with a frozen ₽ wallet,
     /// plus the exact text its price row renders.
     private func makeSettings() -> (SettingsViewController, String) {
-        let suite = "PenaltyDisplayColorTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let currencyStore = WalletCurrencyStore(defaults: defaults)
         _ = currencyStore.freeze(.rub)
         let alarmDefaults = AlarmDefaults(defaults: defaults)

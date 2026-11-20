@@ -64,9 +64,7 @@ final class WalletBalanceCurrencyTests: XCTestCase {
     }
 
     func testWalletControllerFirstRenderAndRefreshUseActualWalletCurrencyWithoutFilteringPreview() throws {
-        let suite = "WalletBalanceCurrencyTests.\(UUID())"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let repository = TransactionRepository(defaults: defaults)
         let balance = BalanceService(defaults: defaults, transactionRepository: repository,
                                      notificationCenter: NotificationCenter())
@@ -91,9 +89,7 @@ final class WalletBalanceCurrencyTests: XCTestCase {
     }
 
     func testAlarmsViewModelReadsWalletCurrencyAndFiltersFinancialDeltaBeforeRefundPairing() throws {
-        let suite = "AlarmsBalanceCurrencyTests.\(UUID())"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = makeIsolatedDefaults()
         let center = NotificationCenter()
         let repository = TransactionRepository(defaults: defaults)
         let balance = BalanceService(defaults: defaults, transactionRepository: repository, notificationCenter: center)

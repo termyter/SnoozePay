@@ -61,8 +61,11 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         override var presentingViewController: UIViewController? { presentedBy }
     }
 
-    private static let suite = "AlarmFiringPresenterTransitionTests"
-    private let defaults = UserDefaults(suiteName: suite) ?? UserDefaults()
+    /// A pool slot (#1118), taken in `setUp` and handed back from `tearDown`
+    /// where the fixed suite used to be wiped, so anything `tearDown` stops or
+    /// drains before that point still writes into a slot this test owns.
+    private var lease: IsolatedDefaultsLease<UserDefaults>!
+    private var defaults: UserDefaults { lease.defaults }
     /// What `locateHost` answers, first to last; the last one repeats.
     private var hosts: [UIViewController] = []
     /// Controllers in a transition, by the seam.
@@ -78,12 +81,14 @@ final class AlarmFiringPresenterTransitionTests: XCTestCase {
         super.setUp()
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
+        lease = IsolatedDefaultsPool.checkOut()
     }
 
     override func tearDown() {
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
-        defaults.removePersistentDomain(forName: Self.suite)
+        IsolatedDefaultsPool.checkIn(lease)
+        lease = nil
         hosts = []
         inTransition = []
         held = []

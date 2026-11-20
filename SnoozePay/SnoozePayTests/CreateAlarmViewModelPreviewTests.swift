@@ -20,7 +20,6 @@ final class CreateAlarmViewModelPreviewTests: XCTestCase {
         var events: [String] = []
     }
 
-    private var suiteName: String!
     private var defaults: UserDefaults!
     private var viewModel: CreateAlarmViewModel!
     private var sessionLog: SessionLog!
@@ -28,8 +27,7 @@ final class CreateAlarmViewModelPreviewTests: XCTestCase {
     override func setUp() {
         super.setUp()
         AudioService.shared.stopAlarmSound()
-        suiteName = "test.createAlarm.preview.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = makeIsolatedDefaults()
         viewModel = CreateAlarmViewModel(repository: AlarmRepository(defaults: defaults))
         sessionLog = SessionLog()
         let log = sessionLog!
@@ -42,7 +40,6 @@ final class CreateAlarmViewModelPreviewTests: XCTestCase {
     override func tearDown() {
         viewModel.stopPreviewSound()
         AudioService.shared.overridePreviewSession(setCategory: nil, deactivate: nil)
-        defaults.removePersistentDomain(forName: suiteName)
         super.tearDown()
     }
 

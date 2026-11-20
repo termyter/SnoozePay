@@ -34,9 +34,12 @@ final class AlarmFiringPresenterMissRuleTests: XCTestCase {
         }
     }
 
-    private static let suite = "AlarmFiringPresenterMissRuleTests"
     private static let noHost = ActiveWindowLocator.Miss.noHostingWindow.rawValue
-    private let defaults = UserDefaults(suiteName: suite) ?? UserDefaults()
+    /// A pool slot (#1118), taken in `setUp` and handed back from `tearDown`
+    /// where the fixed suite used to be wiped, so anything `tearDown` stops or
+    /// drains before that point still writes into a slot this test owns.
+    private var lease: IsolatedDefaultsLease<UserDefaults>!
+    private var defaults: UserDefaults { lease.defaults }
     private var top: UIViewController?
     private var rootReady = true
     private var dismissed: [UIViewController] = []
@@ -46,12 +49,14 @@ final class AlarmFiringPresenterMissRuleTests: XCTestCase {
         super.setUp()
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
+        lease = IsolatedDefaultsPool.checkOut()
     }
 
     override func tearDown() {
         AudioService.shared.stopAlarmSound()
         drainMainQueue()
-        defaults.removePersistentDomain(forName: Self.suite)
+        IsolatedDefaultsPool.checkIn(lease)
+        lease = nil
         top = nil
         dismissed = []
         lines = []
