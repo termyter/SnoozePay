@@ -101,19 +101,34 @@ final class StatisticsViewController: UIViewController {
 
     /// Big mono streak count drawn at `moneyXl` (56pt) — the hero number is
     /// the screen's focal point (`SPMore4.jsx`, audit P2-3 #289).
+    ///
+    /// Grows on `.largeTitle`, the flattest curve (#1111). One run of digits,
+    /// so it never wraps: when a long streak at the largest sizes does not fit
+    /// beside the day word it shrinks, never below half its size.
     let streakBigLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyXl
+        label.font = AppTypography.scaled(AppTypography.moneyXl, as: .largeTitle)
         label.textColor = AppColors.fg1
-        label.adjustsFontForContentSizeCategory = false
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
     /// Trailing "дня / дней / день" word next to the big streak number.
+    ///
+    /// One word: one line, and it out-resists the number, which shrinks
+    /// instead. The lower hugging makes it the label that takes the row's
+    /// slack, so its text still starts right after the number.
     let streakBigWordLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.h3
+        label.font = AppTypography.scaled(AppTypography.h3, as: .title3)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 1
+        label.setContentCompressionResistancePriority(UILayoutPriority(751), for: .horizontal)
+        label.setContentHuggingPriority(UILayoutPriority(249), for: .horizontal)
         label.textColor = AppColors.fg3
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -122,7 +137,8 @@ final class StatisticsViewController: UIViewController {
     /// Meta line below the streak count — "Последний срыв: 8 января".
     let streakMetaLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -188,7 +204,8 @@ final class StatisticsViewController: UIViewController {
         // `SPWrappingLabel`, not `UILabel` — see that type for why a plain
         // multi-line label in a stack loses every line after the first (#631).
         let label = SPWrappingLabel()
-        label.font = AppTypography.h3
+        label.font = AppTypography.scaled(AppTypography.h3, as: .title3)
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg1
         // Unbounded rather than 2: the longest headline takes two lines at
         // iPhone width and could take three at a large content size. A taller
@@ -214,17 +231,23 @@ final class StatisticsViewController: UIViewController {
     /// longest string — «Столько же, сколько на прошлой неделе».
     let trendSubtitleLabel: UILabel = {
         let label = SPWrappingLabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
 
-    /// Big mono count under the right-aligned "Эта неделя" caption.
+    /// Big mono count under the right-aligned "Эта неделя" caption. A number:
+    /// one line, shrinking rather than clipping.
     let trendWeekValueLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.moneyMd
+        label.font = AppTypography.scaled(AppTypography.moneyMd, as: .title3)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
         label.textAlignment = .right
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -502,27 +525,62 @@ final class StatisticsViewController: UIViewController {
         )
 
         // Weekday distribution.
-        weekdayHeadlineLabel.attributedText = Self.weekdayHeadline(
-            worstDayNames: viewModel.worstWeekdayNames
-        )
+        renderWeekdayHeadline()
         weekdayBarsView.stats = viewModel.weekdayStats
 
         // 8-week trend.
         let direction = viewModel.trendDirection
         trendHeadlineLabel.text = viewModel.trendHeadline
         trendSubtitleLabel.text = viewModel.trendSubtitle
+        remeasureTrendText()
         trendArrowView.isHidden = direction == .same
-        trendArrowView.image = UIImage(
-            systemName: direction == .better ? "arrow.down.right" : "arrow.up.right",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
-        )
+        trendArrowView.image = Self.trendArrowImage(for: direction)
         trendArrowView.tintColor = Self.trendColor(for: direction)
         trendWeekValueLabel.text = "\(viewModel.thisWeekCount)"
         trendWeekValueLabel.textColor = Self.trendColor(for: direction)
         trendBarsView.apply(points: viewModel.weeklyTrend, direction: direction)
     }
+}
 
-    // MARK: - Presentation helpers
+// MARK: - Presentation helpers
+
+/// Outside the class body to keep it under SwiftLint's `type_body_length`.
+extension StatisticsViewController {
+
+    /// Puts the two wrapping trend labels back where a cold start has them:
+    /// no preferred width and no width of their own, so each measures one
+    /// unwrapped line and settles on the width the next layout gives it.
+    /// `SPWrappingLabel` keeps the width of its last layout, so a new copy or
+    /// text size would otherwise wrap at the old width (#1111).
+    func remeasureTrendText() {
+        for label in [trendHeadlineLabel, trendSubtitleLabel] {
+            label.preferredMaxLayoutWidth = 0
+            label.frame.size.width = 0
+            label.invalidateIntrinsicContentSize()
+            // Asked for, not left to the width change: the label has to get
+            // its width back even when it measures the same (one line, at a
+            // capped size).
+            label.setNeedsLayout()
+            label.superview?.setNeedsLayout()
+        }
+    }
+
+    /// Down-right for fewer snoozes than last week, up-right otherwise.
+    static func trendArrowImage(for direction: StatisticsViewModel.TrendDirection) -> UIImage? {
+        UIImage(
+            systemName: direction == .better ? "arrow.down.right" : "arrow.up.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        )
+    }
+
+    /// The headline at the label's own text size. Attributed text, so
+    /// `adjustsFontForContentSizeCategory` cannot regrow it: `makeWeekdayCard`
+    /// calls this again when the size changes (#1111).
+    func renderWeekdayHeadline() {
+        weekdayHeadlineLabel.attributedText = Self.weekdayHeadline(
+            worstDayNames: viewModel.worstWeekdayNames, compatibleWith: weekdayHeadlineLabel.traitCollection
+        )
+    }
 
     /// "Чаще всего — среда" with the day tinted pain; falls back to a neutral
     /// caption when the 4-week window has no snoozes.
@@ -533,9 +591,14 @@ final class StatisticsViewController: UIViewController {
     /// when snoozes did happen. `ListFormatter` builds the conjunction for the
     /// current locale, so no new hardcoded string is added while the catalogue
     /// migration (#569) is still open.
-    static func weekdayHeadline(worstDayNames: [String]) -> NSAttributedString {
+    ///
+    /// `traits` pins the text size (#1111); `h3` is unchanged at the default one.
+    static func weekdayHeadline(
+        worstDayNames: [String], compatibleWith traits: UITraitCollection? = nil
+    ) -> NSAttributedString {
+        let font = AppTypography.scaled(AppTypography.h3, as: .title3, compatibleWith: traits)
         let base: [NSAttributedString.Key: Any] = [
-            .font: AppTypography.h3,
+            .font: font,
             .foregroundColor: AppColors.fg1
         ]
         guard !worstDayNames.isEmpty else {
@@ -554,7 +617,7 @@ final class StatisticsViewController: UIViewController {
             replacing: NSAttributedString(
                 string: name,
                 attributes: [
-                    .font: AppTypography.h3,
+                    .font: font,
                     .foregroundColor: StatisticsAccentTones.pain
                 ]
             )

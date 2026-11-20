@@ -43,7 +43,10 @@ final class StatisticsHeatmapView: UIView {
     /// takes the 8pt `xs` badly. Named rather than inlined so the grid and the
     /// selection ring can't drift apart.
     static let cellCornerRadius: CGFloat = 5
+    /// Weekday header row at the default text size. It grows with its labels
+    /// (#1111); the cells below keep their size.
     private static let headerHeight = AppSpacing.sp4
+    private static let headerFont = AppFonts.sans(.semibold, 10)
     private static let ringInset = AppSpacing.sp1
     /// Gap between the tapped cell and the tooltip's arrow tip. Off the 4pt
     /// grid by design — the arrow eats 6pt of it, so `sp3` would read as a
@@ -77,7 +80,11 @@ final class StatisticsHeatmapView: UIView {
         for text in StatisticsViewModel.weekdayShortLabels {
             let label = UILabel()
             label.text = text.uppercased()
-            label.font = AppFonts.sans(.semibold, 10)
+            label.font = AppTypography.scaled(Self.headerFont, as: .caption2)
+            label.adjustsFontForContentSizeCategory = true
+            // A column is ~40pt wide: a longer abbreviation shrinks, never "…".
+            label.adjustsFontSizeToFitWidth = true
+            label.minimumScaleFactor = 0.5
             label.textColor = AppColors.fg3
             label.textAlignment = .center
             headerLabels.append(label)
@@ -102,6 +109,17 @@ final class StatisticsHeatmapView: UIView {
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: StatisticsHeatmapView, _) in
             view.refreshRingColor()
         }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: StatisticsHeatmapView, _) in
+            view.invalidateIntrinsicContentSize()
+            view.setNeedsLayout()
+        }
+    }
+
+    /// `headerHeight` in proportion to the header font at this text size —
+    /// exactly 16pt at the default one.
+    private var scaledHeaderHeight: CGFloat {
+        let font = AppTypography.scaled(Self.headerFont, as: .caption2, compatibleWith: traitCollection)
+        return Self.headerHeight * font.pointSize / Self.headerFont.pointSize
     }
 
     private func refreshRingColor() {
@@ -129,7 +147,7 @@ final class StatisticsHeatmapView: UIView {
         return max(8, floor((bounds.width - totalGutter) / CGFloat(Self.columnCount)))
     }
 
-    private func frameForCell(at index: Int) -> CGRect {
+    private func frameForCell(at index: Int, headerHeight: CGFloat) -> CGRect {
         let side = cellSide
         let row = index / Self.columnCount
         let column = index % Self.columnCount
@@ -137,23 +155,24 @@ final class StatisticsHeatmapView: UIView {
         // fractional slot so the 7th column stays flush with the right edge.
         let slot = (bounds.width + Self.cellSpacing) / CGFloat(Self.columnCount)
         let x = CGFloat(column) * slot
-        let y = Self.headerHeight + Self.cellSpacing + CGFloat(row) * (side + Self.cellSpacing)
+        let y = headerHeight + Self.cellSpacing + CGFloat(row) * (side + Self.cellSpacing)
         return CGRect(x: x, y: y, width: side, height: side)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         let slot = (bounds.width + Self.cellSpacing) / CGFloat(Self.columnCount)
+        let headerHeight = scaledHeaderHeight
         for (index, label) in headerLabels.enumerated() {
             label.frame = CGRect(
                 x: CGFloat(index) * slot,
                 y: 0,
                 width: slot - Self.cellSpacing,
-                height: Self.headerHeight
+                height: headerHeight
             )
         }
         for (index, cell) in cellViews.enumerated() {
-            cell.frame = frameForCell(at: index)
+            cell.frame = frameForCell(at: index, headerHeight: headerHeight)
         }
         layoutSelectionOverlay()
         invalidateIntrinsicContentSize()
@@ -161,14 +180,14 @@ final class StatisticsHeatmapView: UIView {
 
     override var intrinsicContentSize: CGSize {
         guard !days.isEmpty else {
-            return CGSize(width: UIView.noIntrinsicMetric, height: Self.headerHeight)
+            return CGSize(width: UIView.noIntrinsicMetric, height: scaledHeaderHeight)
         }
         let rowCount = Int(ceil(Double(days.count) / Double(Self.columnCount)))
         let side = cellSide
         let gridHeight = side * CGFloat(rowCount) + Self.cellSpacing * CGFloat(max(0, rowCount - 1))
         return CGSize(
             width: UIView.noIntrinsicMetric,
-            height: Self.headerHeight + Self.cellSpacing + gridHeight
+            height: scaledHeaderHeight + Self.cellSpacing + gridHeight
         )
     }
 
@@ -206,7 +225,7 @@ final class StatisticsHeatmapView: UIView {
 
     private func layoutSelectionOverlay() {
         guard let index = selectedIndex, index < cellViews.count else { return }
-        let cellFrame = frameForCell(at: index)
+        let cellFrame = frameForCell(at: index, headerHeight: scaledHeaderHeight)
         ringView.frame = cellFrame.insetBy(dx: -Self.ringInset, dy: -Self.ringInset)
 
         let size = tooltipView.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
