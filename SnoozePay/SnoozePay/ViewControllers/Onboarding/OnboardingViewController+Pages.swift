@@ -17,18 +17,59 @@ extension OnboardingViewController {
     // MARK: - Adaptive tokens (compact height — iPhone SE, #244)
 
     /// Hero clock font — drops 96 → 64pt on SE so step 1 clears the title.
+    /// The clock is the page's illustration and already larger than any text
+    /// grows to, so it keeps its size at every Dynamic Type category (#1111).
     var pageClockFont: UIFont {
         isCompactHeight ? AppTypography.clockLg : AppTypography.clockXl
     }
 
-    /// Page-title font — drops h1 (32) → h2 (24) on SE.
-    var pageTitleFont: UIFont {
+    /// Page-title role — drops h1 (32) → h2 (24) on SE.
+    private var pageTitleRole: UIFont {
         isCompactHeight ? AppTypography.h2 : AppTypography.h1
     }
 
-    /// Body copy under the step-1 hero — bodyLg (17) → body (15) on SE.
+    /// The title role grown with Dynamic Type (#1111), at most 48pt: there the
+    /// longest title word, «дисциплину?», fills the 343pt column of a 375pt
+    /// phone, and any larger it would break mid-word.
+    var pageTitleFont: UIFont {
+        let font = isCompactHeight
+            ? AppTypography.scaledH2(compatibleWith: traitCollection)
+            : AppTypography.scaledH1(compatibleWith: traitCollection)
+        return font.pointSize > Self.pageTitleMaximumPointSize ? font.withSize(Self.pageTitleMaximumPointSize) : font
+    }
+
+    static let pageTitleMaximumPointSize: CGFloat = 48
+
+    /// Body copy under the step-1 hero — bodyLg (17) → body (15) on SE,
+    /// grown with Dynamic Type.
     var pageBodyFont: UIFont {
-        isCompactHeight ? AppTypography.body : AppTypography.bodyLg
+        isCompactHeight
+            ? AppTypography.scaled(AppTypography.body, as: .subheadline, compatibleWith: traitCollection)
+            : AppTypography.scaled(AppTypography.bodyLg, as: .body, compatibleWith: traitCollection)
+    }
+
+    /// A page title: white, −0.32pt tracking at the default size, kept in
+    /// proportion when the font grows.
+    func pageTitleText(_ key: String) -> NSAttributedString {
+        let font = pageTitleFont
+        return NSAttributedString(string: Localized.text(key), attributes: [
+            .font: font,
+            .kern: AppTypography.kerning(-0.32, of: pageTitleRole, scaledTo: font),
+            .foregroundColor: UIColor.white
+        ])
+    }
+
+    /// A page's caps eyebrow. Grown, it wraps instead of truncating.
+    func makePageCaps(_ key: String, color: UIColor) -> UILabel {
+        let font = AppTypography.scaledCaps(compatibleWith: traitCollection)
+        let label = UILabel()
+        label.attributedText = NSAttributedString(string: Localized.text(key), attributes: [
+            .font: font,
+            .kern: AppTypography.kerning(AppTypography.capsKerning, of: AppTypography.caps, scaledTo: font),
+            .foregroundColor: color
+        ])
+        label.numberOfLines = 0
+        return label
     }
 
     /// Vertical gap below the title block — tightened on SE so the denser
@@ -55,19 +96,17 @@ extension OnboardingViewController {
 
     // MARK: - Page 1 — concept
 
-    func makePage1() -> UIView {
-        let container = UIView()
+    func makePage1() -> OnboardingPageView {
         let glowHost = makePage1Glow()
-        container.addSubview(glowHost)
         let clockLabel = makePage1Clock()
         let pill = OnboardingPenaltyPill(
-            amount: ExampleMoneyCopy.string(roubles: 50, tier: .low, in: priceContext)
+            amount: ExampleMoneyCopy.string(roubles: 50, tier: .low, in: priceContext),
+            traits: traitCollection
         )
         let titleLabel = makePage1Title()
         let bodyLabel = makePage1Body()
 
         let stack = UIStackView(arrangedSubviews: [clockLabel, pill, titleLabel, bodyLabel])
-        stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
         stack.alignment = .center
         // Tighten the hero spacing on SE (#244) so the dense clock/pill/title
@@ -77,7 +116,10 @@ extension OnboardingViewController {
         stack.setCustomSpacing(afterClock, after: clockLabel)
         stack.setCustomSpacing(afterPill, after: pill)
         stack.setCustomSpacing(AppSpacing.sp3 + 2, after: titleLabel)
-        container.addSubview(stack)
+        let page = OnboardingPageView(column: stack)
+        // Behind the scrolling column: the glow stays put while it scrolls.
+        page.insertSubview(glowHost, at: 0)
+        let container = page.content
 
         // The inequality leading/trailing pins alone don't force a width —
         // Auto Layout would happily collapse the stack to ~1 glyph and wrap
@@ -89,14 +131,19 @@ extension OnboardingViewController {
             constant: -(AppSpacing.sp4 * 2)
         )
         preferredWidth.priority = UILayoutPriority(999)
+        // The labels measure their lines at the column's widest, not at their
+        // current width: a centred multi-line label sized from its own bounds
+        // could settle on a first pass's one-glyph width (#269) — the page is
+        // built before it has a frame, and again on every category change.
+        titleLabel.preferredMaxLayoutWidth = 320
+        bodyLabel.preferredMaxLayoutWidth = 280
 
         NSLayoutConstraint.activate([
-            glowHost.topAnchor.constraint(equalTo: container.topAnchor, constant: 60),
-            glowHost.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            glowHost.topAnchor.constraint(equalTo: page.topAnchor, constant: 60),
+            glowHost.centerXAnchor.constraint(equalTo: page.centerXAnchor),
             glowHost.widthAnchor.constraint(equalToConstant: 420),
             glowHost.heightAnchor.constraint(equalToConstant: 420),
 
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             stack.leadingAnchor.constraint(
                 greaterThanOrEqualTo: container.leadingAnchor,
@@ -110,7 +157,7 @@ extension OnboardingViewController {
             stack.widthAnchor.constraint(lessThanOrEqualToConstant: 320),
             bodyLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
         ])
-        return container
+        return page
     }
 
     // MARK: - Page 1 helpers
@@ -152,14 +199,7 @@ extension OnboardingViewController {
 
     private func makePage1Title() -> UILabel {
         let label = UILabel()
-        label.attributedText = NSAttributedString(
-            string: Localized.text("onboarding.page1.title"),
-            attributes: [
-                .font: pageTitleFont,
-                .kern: -0.32,
-                .foregroundColor: UIColor.white
-            ]
-        )
+        label.attributedText = pageTitleText("onboarding.page1.title")
         label.textAlignment = .center
         label.numberOfLines = 0
         return label
@@ -177,28 +217,10 @@ extension OnboardingViewController {
 
     // MARK: - Page 2 — mechanics
 
-    func makePage2() -> UIView {
-        let container = UIView()
-
-        let caps = UILabel()
-        caps.attributedText = NSAttributedString(
-            string: Localized.text("onboarding.page2.caps"),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.warn300
-            ]
-        )
-
+    func makePage2() -> OnboardingPageView {
+        let caps = makePageCaps("onboarding.page2.caps", color: AppColors.warn300)
         let titleLabel = UILabel()
-        titleLabel.attributedText = NSAttributedString(
-            string: Localized.text("onboarding.page2.title"),
-            attributes: [
-                .font: pageTitleFont,
-                .kern: -0.32,
-                .foregroundColor: UIColor.white
-            ]
-        )
+        titleLabel.attributedText = pageTitleText("onboarding.page2.title")
         titleLabel.numberOfLines = 0
 
         // The deposit is the default preset and the charge one low-tier snooze,
@@ -214,7 +236,7 @@ extension OnboardingViewController {
              Localized.text("onboarding.page2.step2_body")),
             ("3", Localized.text("onboarding.page2.step3_title"),
              Localized.text("onboarding.page2.step3_body"))
-        ].map { OnboardingStepRow(number: $0.0, title: $0.1, body: $0.2) }
+        ].map { OnboardingStepRow(number: $0.0, title: $0.1, body: $0.2, traits: traitCollection) }
 
         let rowsStack = UIStackView(arrangedSubviews: rows)
         rowsStack.axis = .vertical
@@ -223,45 +245,29 @@ extension OnboardingViewController {
         rowsStack.alignment = .fill
 
         let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, rowsStack])
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
         mainStack.axis = .vertical
         mainStack.alignment = .fill
         mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
         mainStack.setCustomSpacing(pageTitleGap, after: titleLabel)
+        return makeInsetPage(column: mainStack)
+    }
 
-        container.addSubview(mainStack)
+    /// A page whose column spans the width less the 16pt side insets.
+    private func makeInsetPage(column: UIView) -> OnboardingPageView {
+        let page = OnboardingPageView(column: column)
         NSLayoutConstraint.activate([
-            mainStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp4),
-            mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp4)
+            column.leadingAnchor.constraint(equalTo: page.content.leadingAnchor, constant: AppSpacing.sp4),
+            column.trailingAnchor.constraint(equalTo: page.content.trailingAnchor, constant: -AppSpacing.sp4)
         ])
-        return container
+        return page
     }
 
     // MARK: - Page 3 — deposit
 
-    func makePage3() -> UIView {
-        let container = UIView()
-
-        let caps = UILabel()
-        caps.attributedText = NSAttributedString(
-            string: Localized.text("onboarding.page3.caps"),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.money300
-            ]
-        )
-
+    func makePage3() -> OnboardingPageView {
+        let caps = makePageCaps("onboarding.page3.caps", color: AppColors.money300)
         let titleLabel = UILabel()
-        titleLabel.attributedText = NSAttributedString(
-            string: Localized.text("onboarding.page3.title"),
-            attributes: [
-                .font: pageTitleFont,
-                .kern: -0.32,
-                .foregroundColor: UIColor.white
-            ]
-        )
+        titleLabel.attributedText = pageTitleText("onboarding.page3.title")
         titleLabel.numberOfLines = 0
 
         let optionsStack = UIStackView()
@@ -271,7 +277,9 @@ extension OnboardingViewController {
         optionsStack.alignment = .fill
 
         for (index, option) in depositOptions.enumerated() {
-            let optionView = OnboardingDepositOptionView(option: option, isCompact: isCompactHeight)
+            let optionView = OnboardingDepositOptionView(
+                option: option, isCompact: isCompactHeight, traits: traitCollection
+            )
             optionView.isSelectedOption = index == selectedDepositIndex
             optionView.onTap = { [weak self] in self?.handleDepositOptionTap(at: index) }
             depositOptionViews.append(optionView)
@@ -282,19 +290,11 @@ extension OnboardingViewController {
         // ends with the option cards; the content block centres vertically
         // like pages 1/2 (JSX `flex: 1; justify-content: center`).
         let mainStack = UIStackView(arrangedSubviews: [caps, titleLabel, optionsStack])
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
         mainStack.axis = .vertical
         mainStack.alignment = .fill
         mainStack.setCustomSpacing(AppSpacing.sp2, after: caps)
         mainStack.setCustomSpacing(isCompactHeight ? AppSpacing.sp4 : AppSpacing.sp6, after: titleLabel)
-
-        container.addSubview(mainStack)
-        NSLayoutConstraint.activate([
-            mainStack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: AppSpacing.sp4),
-            mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -AppSpacing.sp4)
-        ])
-        return container
+        return makeInsetPage(column: mainStack)
     }
 
     // MARK: - Pager state
