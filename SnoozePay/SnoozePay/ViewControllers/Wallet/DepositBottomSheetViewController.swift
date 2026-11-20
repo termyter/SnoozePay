@@ -62,9 +62,13 @@ final class DepositBottomSheetViewController: UIViewController {
     private let purchaseProduct: ((String) -> Void)?
     private let notificationCenter: NotificationCenter
     private let scheduleSuccessDismissal: TopUpSuccessDismissal
+    /// Where this sheet registers as a purchase-feedback subscriber (#45); `.shared` in the app.
+    private let feedbackStore: StoreKitService
     /// True while this screen is registered as a purchase-feedback subscriber
-    /// so `begin`/`end` stay balanced across appear/disappear (#45).
+    /// so `begin`/`end` stay balanced (#45).
     private var isObservingPurchaseFeedback = false
+    /// Between `viewWillAppear` and `viewWillDisappear`.
+    private var isOnScreen = false
 
     // MARK: - Subviews
 
@@ -197,13 +201,15 @@ final class DepositBottomSheetViewController: UIViewController {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { action() }
         },
         purchaseProduct: ((String) -> Void)? = nil,
-        offerProvider: ((String) -> TopUpOffer?)? = nil
+        offerProvider: ((String) -> TopUpOffer?)? = nil,
+        feedbackStore: StoreKitService? = nil
     ) {
         self.balance = balance
         self.purchaseProduct = purchaseProduct
         self.offerProvider = offerProvider
         self.notificationCenter = notificationCenter
         self.scheduleSuccessDismissal = scheduleSuccessDismissal
+        self.feedbackStore = feedbackStore ?? .shared
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .pageSheet
         if let sheet = sheetPresentationController {
@@ -251,20 +257,29 @@ final class DepositBottomSheetViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // While this screen is visible, purchase feedback routes to the in-app
-        // banner; tell StoreKitService so it doesn't also post a fallback local
-        // notification (#45). Balanced in `viewWillDisappear`.
-        if !isObservingPurchaseFeedback {
-            isObservingPurchaseFeedback = true
-            StoreKitService.shared.beginObservingPurchaseFeedback()
-        }
+        isOnScreen = true
+        updatePurchaseFeedbackSubscription()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if isObservingPurchaseFeedback {
-            isObservingPurchaseFeedback = false
-            StoreKitService.shared.endObservingPurchaseFeedback()
+        isOnScreen = false
+        updatePurchaseFeedbackSubscription()
+    }
+
+    /// A subscriber makes StoreKitService broadcast instead of posting its
+    /// fallback banner (#45). This sheet claims only its own purchases (#1190),
+    /// so it subscribes only while visible with one outstanding and no success
+    /// yet. Subscribed while idle, it would swallow the banner of a credit it
+    /// then turns away: an approval from an earlier session, a restore, a replay.
+    private func updatePurchaseFeedbackSubscription() {
+        let wanted = isOnScreen && ownPurchasesOutstanding > 0 && successReceipt == nil
+        guard wanted != isObservingPurchaseFeedback else { return }
+        isObservingPurchaseFeedback = wanted
+        if wanted {
+            feedbackStore.beginObservingPurchaseFeedback()
+        } else {
+            feedbackStore.endObservingPurchaseFeedback()
         }
     }
 
@@ -484,6 +499,7 @@ final class DepositBottomSheetViewController: UIViewController {
         ) { [weak self] _ in
             guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.ownPurchasesOutstanding = max(0, self.ownPurchasesOutstanding - 1)
+            self.updatePurchaseFeedbackSubscription()
             self.endPurchaseInFlight()
         }
         purchasePendingObserver = center.addObserver(
@@ -533,6 +549,7 @@ final class DepositBottomSheetViewController: UIViewController {
         // tests pin the one a real purchase needs (#1190).
         if let dispatch = purchaseDispatch(for: preset.productID) {
             ownPurchasesOutstanding += 1
+            updatePurchaseFeedbackSubscription()
             dispatch(preset.productID)
             return
         }
@@ -579,6 +596,7 @@ final class DepositBottomSheetViewController: UIViewController {
         successReceipt = receipt
         purchaseInFlight = false
         depositButton.isEnabled = false
+        updatePurchaseFeedbackSubscription()
 
         successAmountLabel.text = "+" + MoneyFormatter.string(receipt.amount, currency: receipt.currency)
         successContainer.isHidden = false
@@ -600,7 +618,11 @@ final class DepositBottomSheetViewController: UIViewController {
     /// it would replace the alert that is really up as `ownAlert` (#1190).
     private func presentOwnAlert(_ alert: UIAlertController) {
         if let above = presentedViewController {
-            AppLogger.emit(.ui, .error, "DepositSheet: alert not shown, \(type(of: above)) is presented")
+            // Behind its own alert the sheet drops a message of its own. Under
+            // another screen it is routine routing: the failure observer is not
+            // gated, so another sheet's failure reaches this one (#1190).
+            let level: OSLogType = above === ownAlert ? .error : .default
+            AppLogger.emit(.ui, level, "DepositSheet: alert not shown, \(type(of: above)) is presented")
             return
         }
         ownAlert = alert

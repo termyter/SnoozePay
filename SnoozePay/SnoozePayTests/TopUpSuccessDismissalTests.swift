@@ -192,8 +192,9 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         try button(in: sheet, id: "deposit.purchaseButton").sendActions(for: .touchUpInside)
         center.post(name: StoreKitService.purchasePendingNotification, object: nil)
         let notice = try presentedAlert(on: sheet, after: StoreKitService.purchasePendingNotification)
-        let refused = uiErrors { center.post(name: StoreKitService.purchaseFailedNotification, object: nil) }
-        XCTAssertEqual(refused, ["DepositSheet: alert not shown, UIAlertController is presented"])
+        let refused = uiLines { center.post(name: StoreKitService.purchaseFailedNotification, object: nil) }
+        XCTAssertEqual(refused, ["error: DepositSheet: alert not shown, UIAlertController is presented"],
+                       "Behind its own notice the sheet drops a message of its own")
         XCTAssertTrue(sheet.presentedViewController === notice, presentationDiagnostics(rootedAt: host))
 
         XCTAssertEqual(postCompletion(on: center), [])
@@ -228,8 +229,8 @@ final class TopUpSuccessDismissalTests: XCTestCase {
             let cover = coverScreen()
             present(cover, on: sheet)
 
-            XCTAssertEqual(uiErrors { dismiss() },
-                           ["\(name): success dismissal skipped, UIViewController is presented above it"])
+            XCTAssertEqual(uiLines { dismiss() }, ["error: \(name): success dismissal skipped, "
+                                                  + "UIViewController is presented above it" + skipTail])
             // A dismissal sent marks both at once (main fails here); nothing queued sends one later.
             XCTAssertFalse(cover.isBeingDismissed, name)
             XCTAssertFalse(sheet.isBeingDismissed, name)
@@ -261,13 +262,105 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         XCTAssertEqual(postCompletion(on: center), [])
         let dismiss = try XCTUnwrap(dismissal)
 
-        XCTAssertEqual(uiErrors { dismiss() }, ["DepositBottomSheetViewController: success dismissal skipped, "
-                                               + "UIAlertController is presented above it"])
+        XCTAssertEqual(uiLines { dismiss() }, ["error: DepositBottomSheetViewController: success dismissal skipped, "
+                                              + "UIViewController is presented over the sheet's own alert" + skipTail],
+                       "The line names the screen at the top, not the notice the guard allows")
         XCTAssertFalse(alarmScreen.isBeingDismissed)
         XCTAssertFalse(notice.isBeingDismissed)
         XCTAssertFalse(sheet.isBeingDismissed)
         drainMainQueue()
         XCTAssertTrue(alarmScreen.presentingViewController === notice, presentationDiagnostics(rootedAt: host))
+    }
+
+    /// The skip line names the alert at the top by its identifier, or by its
+    /// title without one, so a restore, a warning and a notice read apart.
+    func testSkipLineNamesAnAlertAboveTheSheetByIdentifierOrTitle() throws {
+        for identifier in ["app.criticalWarning", nil] {
+            let center = NotificationCenter()
+            let balance = BalanceService(defaults: makeIsolatedDefaults(), notificationCenter: center)
+            var dismissal: (@MainActor @Sendable () -> Void)?
+            let sheet = DepositBottomSheetViewController(
+                balance: balance, notificationCenter: center,
+                scheduleSuccessDismissal: { _, action in dismissal = action },
+                purchaseProduct: { _ in }, offerProvider: offer
+            )
+            let host = try mount(sheet)
+            try button(in: sheet, id: "deposit.purchaseButton").sendActions(for: .touchUpInside)
+            XCTAssertEqual(postCompletion(on: center), [])
+            let dismiss = try XCTUnwrap(dismissal)
+            let alert = UIAlertController(title: "Foreign title", message: nil, preferredStyle: .alert)
+            alert.view.accessibilityIdentifier = identifier
+            present(alert, on: sheet)
+
+            let label = identifier ?? "Foreign title"
+            XCTAssertEqual(uiLines { dismiss() }, ["error: DepositBottomSheetViewController: success dismissal "
+                                                  + "skipped, UIAlertController(\(label)) is presented above it"
+                                                  + skipTail])
+            XCTAssertFalse(alert.isBeingDismissed, label)
+            XCTAssertTrue(sheet.presentedViewController === alert, presentationDiagnostics(rootedAt: host))
+        }
+    }
+
+    /// The failure observer is not gated, so in the #1190 stack another sheet's
+    /// failure reaches the covered deposit sheet. Its refusal there is routine
+    /// routing, logged at `.default`, not the `.error` of a message it drops
+    /// behind its own alert.
+    func testFailureReachingACoveredDepositSheetIsLoggedAsRouting() throws {
+        let center = NotificationCenter()
+        let balance = BalanceService(defaults: makeIsolatedDefaults(), notificationCenter: center)
+        let sheet = DepositBottomSheetViewController(
+            balance: balance, notificationCenter: center, purchaseProduct: { _ in }, offerProvider: offer
+        )
+        let host = try mount(sheet)
+        let firingScreen = coverScreen()
+        present(firingScreen, on: sheet)
+        let lines = uiLines { center.post(name: StoreKitService.purchaseFailedNotification, object: nil) }
+        XCTAssertEqual(lines, ["default: DepositSheet: alert not shown, UIViewController is presented"])
+        XCTAssertTrue(sheet.presentedViewController === firingScreen, presentationDiagnostics(rootedAt: host))
+        XCTAssertNil(firingScreen.presentedViewController)
+    }
+
+    /// #45 against #1190: a subscriber makes StoreKit broadcast instead of
+    /// posting its banner, and an idle deposit sheet turns a broadcast credit
+    /// away. So the sheet subscribes only while visible with a purchase of its
+    /// own outstanding; otherwise a credit nobody claims gets the banner.
+    func testDepositSheetSubscribesToPurchaseFeedbackOnlyWhileItOwnsAPurchase() throws {
+        let center = NotificationCenter()
+        let defaults = makeIsolatedDefaults()
+        let poster = LocalNotificationPosterSpy()
+        let store = StoreKitService(notificationPoster: poster, defaults: defaults, startListener: false)
+        let balance = BalanceService(defaults: defaults, notificationCenter: center)
+        var dismissal: (@MainActor @Sendable () -> Void)?
+        let sheet = DepositBottomSheetViewController(
+            balance: balance, notificationCenter: center,
+            scheduleSuccessDismissal: { _, action in dismissal = action },
+            purchaseProduct: { _ in }, offerProvider: offer, feedbackStore: store
+        )
+        let host = try mount(sheet)
+        let tap = { try self.button(in: sheet, id: "deposit.purchaseButton").sendActions(for: .touchUpInside) }
+
+        XCTAssertFalse(store.hasPurchaseFeedbackSubscriber, "Visible but idle: not a subscriber")
+        store.postPurchaseCompleted(149, currency: .rub)
+        XCTAssertEqual(poster.requests.count, 1, "A credit no screen claims gets StoreKit's banner")
+        try tap()
+        XCTAssertTrue(store.hasPurchaseFeedbackSubscriber, "Its own purchase is outstanding")
+        center.post(name: StoreKitService.purchaseCancelledNotification, object: nil)
+        XCTAssertFalse(store.hasPurchaseFeedbackSubscriber, "Cancelled: nothing of its own is left")
+
+        try tap()
+        let cover = coverScreen()
+        present(cover, on: sheet)
+        XCTAssertFalse(store.hasPurchaseFeedbackSubscriber, "Covered: not visible")
+        sheet.dismiss(animated: false)
+        XCTAssertTrue(spin { sheet.presentedViewController == nil && store.hasPurchaseFeedbackSubscriber },
+                      "Visible again with the purchase still outstanding")
+        center.post(name: StoreKitService.purchasePendingNotification, object: nil)
+        XCTAssertTrue(store.hasPurchaseFeedbackSubscriber, "Pending: its approval may still come")
+        XCTAssertEqual(postCompletion(on: center), [])
+        XCTAssertFalse(store.hasPurchaseFeedbackSubscriber, "Its own completion arrived")
+        XCTAssertEqual(poster.requests.count, 1)
+        try XCTUnwrap(dismissal)()
+        XCTAssertTrue(spin { host.presentedViewController == nil }, presentationDiagnostics(rootedAt: host))
     }
 
     // MARK: - Helpers
@@ -280,7 +373,12 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         // The backlog earlier suites left on the main queue is spent here, not
         // inside the first wait below (#618).
         drainMainQueue()
-        addTeardownBlock { [weak self] in self?.unmount() }
+        let subscribedAtMount = StoreKitService.shared.hasPurchaseFeedbackSubscriber
+        addTeardownBlock { [weak self] in
+            self?.unmount()
+            XCTAssertEqual(StoreKitService.shared.hasPurchaseFeedbackSubscriber, subscribedAtMount,
+                           "Every sheet ends the #45 subscription it began")
+        }
         let host = UIViewController()
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
@@ -357,11 +455,16 @@ final class TopUpSuccessDismissalTests: XCTestCase {
         return lines
     }
 
-    /// The `.ui` error lines `emit` wrote during `action`.
-    private func uiErrors(during action: () -> Void) -> [String] {
+    /// The tail of every skip line: nothing retries a skipped dismissal.
+    private let skipTail = "; sheet left in success state, not retried"
+
+    /// The `.ui` lines `emit` wrote during `action`, each prefixed by its level.
+    private func uiLines(during action: () -> Void) -> [String] {
         var lines: [String] = []
         AppLogger.withTestSink({ category, level, message in
-            if category == .ui, level == .error { lines.append(message) }
+            guard category == .ui else { return }
+            let prefix = level == .error ? "error" : level == .default ? "default" : "level \(level.rawValue)"
+            lines.append("\(prefix): \(message)")
         }, perform: action)
         return lines
     }
