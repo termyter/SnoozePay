@@ -133,6 +133,10 @@ final class StoreKitPurchaseFeedbackSignalTests: XCTestCase {
 
         XCTAssertEqual(finishes, 0)
         XCTAssertEqual(process.feedback.failed, Array(repeating: StoreKitService.ledgerLockedFailureMessage, count: 2))
+        XCTAssertEqual(process.feedback.failed.first, Localized.text("deposit.error.credit_failed"),
+                       "Apple has the money: the copy says the credit failed (#1182)")
+        XCTAssertNotEqual(process.feedback.failed.first, ForeignCurrencyNotice.ledgerUnreadableMessage,
+                          "The pre-purchase \"nothing was charged\" copy would be false here")
         XCTAssertEqual(process.feedback.completed, [])
     }
 

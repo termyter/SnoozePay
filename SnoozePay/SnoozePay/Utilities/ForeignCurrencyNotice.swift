@@ -20,6 +20,13 @@ enum ForeignCurrencyNotice {
     /// the app but hides a catalogue miss behind whichever test ran first.
     static var alertTitle: String { Localized.text("deposit.foreign_currency.title") }
 
+    /// The refusal for an unreadable ledger. It is shown before
+    /// `Product.purchase(_:)`, so it says that top-ups are paused and that
+    /// nothing was charged. `StoreKitService.ledgerLockedFailureMessage` is the
+    /// post-charge copy: "couldn't credit the purchase" before any purchase
+    /// reads as money taken and lost (#1182).
+    static var ledgerUnreadableMessage: String { Localized.text("deposit.error.ledger_unreadable") }
+
     /// Message to show instead of starting the purchase, or `nil` when the
     /// purchase may proceed, for a refusal from
     /// `BalanceService.prePurchaseRefusal(in:)`. An
@@ -34,7 +41,7 @@ enum ForeignCurrencyNotice {
         case nil:
             return nil
         case .ledgerUnreadable?:
-            return StoreKitService.ledgerLockedFailureMessage
+            return ledgerUnreadableMessage
         case let .foreignCurrency(wallet, storefront)?:
             return message(wallet: wallet, storefront: storefront, locale: locale)
         }

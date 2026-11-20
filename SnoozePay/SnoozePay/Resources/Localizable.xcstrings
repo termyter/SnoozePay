@@ -3709,6 +3709,24 @@
         }
       }
     },
+    "deposit.error.ledger_unreadable" : {
+      "comment" : "Top-up refused before the purchase sheet opens: the balance ledger cannot be read, so a purchase would be charged and never credited (#1182). Nothing was charged, which is why this is not deposit.error.credit_failed — that one follows a paid purchase.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top-ups are paused: your balance data couldn’t be read. You haven’t been charged. Contact support."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пополнение приостановлено: не удалось прочитать данные баланса. Деньги не списаны. Свяжитесь с поддержкой."
+          }
+        }
+      }
+    },
     "deposit.error.products_load_failed" : {
       "comment" : "Top-up: Product.products(for:) threw while loading the five packages.",
       "extractionState" : "manual",
