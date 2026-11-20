@@ -1,3 +1,4 @@
+import os
 import UIKit
 import XCTest
 @testable import SnoozePay
@@ -6,9 +7,12 @@ import XCTest
 /// pre-purchase gate as both top-up sheets (#1163). An unreadable ledger
 /// refuses every pack as a purchase failure naming the locked ledger, before
 /// anything is dispatched; a readable wallet keeps its currency rules.
+/// Every refusal leaves a line for support (#1184).
 @MainActor
 final class FiringNoBalancePurchaseGateTests: XCTestCase {
 
+    private typealias LoggedLine = (category: AppLogCategory, level: OSLogType, message: String)
+    private static let refusalPrefix = "firing: top-up refused before purchase"
     private let usd = Currency(code: "USD")!
     private let unreadable = Data("unreadable ledger".utf8)
     private let ledgerKey = "stored_transactions"
@@ -65,13 +69,7 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
 
         try fixture.tap()
 
-        XCTAssertTrue(fixture.requested.isEmpty)
-        XCTAssertFalse(fixture.controller.noBalancePurchaseInFlight)
-        XCTAssertEqual(fixture.controller.alerts.count, 1)
-        let alert = try XCTUnwrap(fixture.controller.alerts.first)
-        XCTAssertEqual(alert.title, ForeignCurrencyNotice.alertTitle)
-        XCTAssertEqual(alert.message, ForeignCurrencyNotice.message(wallet: .rub, storefront: usd))
-        XCTAssertEqual(alert.actions.map(\.title), [Localized.text("deposit.foreign_currency.dismiss")])
+        assertRefusedAsForeign(fixture, wallet: .rub, storefront: usd, "rouble wallet, USD pack")
     }
 
     func testReadableLedger_acceptedPack_isDispatched() throws {
@@ -87,6 +85,63 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
             XCTAssertTrue(fixture.controller.noBalancePurchaseInFlight, code)
             XCTAssertEqual(fixture.controller.applePayNoBalanceButton?.isEnabled, false, "In flight — \(code)")
             XCTAssertEqual(fixture.begins, 1, code)
+            XCTAssertFalse(fixture.logged.contains { $0.message.hasPrefix(Self.refusalPrefix) }, code)
+        }
+    }
+
+    /// The catalogue empties while the CTA is on screen, enabled and quoting a
+    /// price, and no reload notice redraws it — unreachable in production, so
+    /// the line is an error. The tap redraws the CTA as «—», disabled, and buys
+    /// nothing. No alert: the firing sheet's own `guard let offer` only
+    /// refreshes too.
+    func testTapWithNoOffer_logsTheDefect_redrawsTheCTA_andDispatchesNothing() throws {
+        let fixture = try Fixture(test: self, pack: ("USD", "4.99")) { defaults in
+            self.freezeUSD(defaults)
+        }
+        let topUp = Localized.text("common.button.top_up")
+        XCTAssertEqual(fixture.controller.applePayNoBalanceButton?.accessibilityLabel, topUp + ", 4.99 USD")
+        fixture.offers = []
+
+        try fixture.tap()
+
+        XCTAssertTrue(fixture.requested.isEmpty)
+        XCTAssertEqual(fixture.begins, 0)
+        XCTAssertFalse(fixture.controller.noBalancePurchaseInFlight)
+        XCTAssertTrue(fixture.controller.alerts.isEmpty)
+        XCTAssertEqual(fixture.controller.applePayNoBalanceButton?.isEnabled, false, "Redrawn without a price")
+        XCTAssertEqual(fixture.controller.applePayNoBalanceButton?.accessibilityLabel, topUp + ", —")
+        XCTAssertNil(fixture.controller.noBalancePurchase.renderedPrice)
+        let lines = fixture.logged.filter { $0.message.hasPrefix("firing: no-balance tap found no offer") }
+        XCTAssertEqual(lines.map(\.category), [.ui])
+        XCTAssertEqual(lines.map(\.level), [.error])
+        XCTAssertEqual(lines.first?.message, "firing: no-balance tap found no offer — CTA redrawn, nothing dispatched")
+    }
+
+    /// The fixture's `tap()` is a user's tap: a CTA that is disabled, or on
+    /// screen under a hidden ancestor, is a test failure, and nothing is sent.
+    func testTapHelper_refusesACTANoUserCanTap() throws {
+        let cases: [(String, (GateController) -> Void)] = [
+            ("disabled", { $0.applePayNoBalanceButton?.isEnabled = false }),
+            ("hidden", { $0.noBalanceContainer?.isHidden = true })
+        ]
+        for (label, makeUnreachable) in cases {
+            let fixture = try Fixture(test: self, pack: ("USD", "4.99")) { defaults in
+                self.freezeUSD(defaults)
+            }
+            XCTAssertEqual(fixture.controller.noBalanceContainer?.isHidden, false, "Reachable first — \(label)")
+            XCTAssertEqual(fixture.controller.applePayNoBalanceButton?.isEnabled, true, "Reachable first — \(label)")
+            makeUnreachable(fixture.controller)
+
+            try XCTExpectFailure("tap() has to refuse a \(label) CTA", strict: true) {
+                try fixture.tap()
+            } issueMatcher: { issue in
+                issue.compactDescription.contains("Tapped a CTA no user can tap")
+            }
+
+            XCTAssertTrue(fixture.requested.isEmpty, label)
+            XCTAssertEqual(fixture.begins, 0, label)
+            XCTAssertTrue(fixture.logged.isEmpty, label)
+            XCTAssertTrue(fixture.controller.alerts.isEmpty, label)
         }
     }
 
@@ -106,7 +161,6 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
                                           skus: StoreKitService.productIDs) { defaults in
                     if frozen {
                         self.freezeUSD(defaults)
-                        self.cacheUSDScale(defaults)
                     } else if readable {
                         // History: the rouble wallet is no longer free to adopt dollars.
                         let wallet = BalanceService(defaults: defaults, notificationCenter: NotificationCenter())
@@ -125,11 +179,7 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
                     assertRefusedAsLocked(fixture, label)
                     continue
                 }
-                XCTAssertTrue(fixture.requested.isEmpty, label)
-                XCTAssertEqual(controller.alerts.count, 1, label)
-                XCTAssertEqual(controller.alerts.first?.title, ForeignCurrencyNotice.alertTitle, label)
-                let notice = ForeignCurrencyNotice.message(wallet: frozen ? usd : .rub, storefront: storefront)
-                XCTAssertEqual(controller.alerts.first?.message, notice, label)
+                assertRefusedAsForeign(fixture, wallet: frozen ? usd : .rub, storefront: storefront, label)
             }
         }
     }
@@ -148,7 +198,19 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
         XCTAssertEqual(controller.noBalanceContainer?.isHidden, false)
 
         fixture.defaults.set(unreadable, forKey: ledgerKey)
-        XCTAssertTrue(controller.viewModel.isLockedPriceStranded)
+        var lines: [LoggedLine] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            XCTAssertTrue(controller.viewModel.isLockedPriceStranded)
+            XCTAssertTrue(controller.viewModel.isLockedPriceStranded, "Asked twice, logged once")
+        })
+        // Nothing froze this wallet: the broken ledger is the cause (#1184).
+        XCTAssertNil(fixture.wallet.storedWalletCurrency)
+        let handle = String(controller.viewModel.alarm.id.uuidString.prefix(8))
+        lines = lines.filter { $0.message.hasPrefix("firing: price locked") }
+        XCTAssertEqual(lines.map(\.category), [.ui])
+        XCTAssertEqual(lines.map(\.level), [.error])
+        XCTAssertEqual(lines.first?.message,
+                       "firing: price locked in USD, ledger unreadable alarm=\(handle) — snooze refused, no charge")
         try fixture.tap()
         assertRefusedAsLocked(fixture, "CTA still on screen after the ledger broke")
 
@@ -159,8 +221,12 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// A dollar wallet that can price its snoozes. Without the cached scale its
+    /// context is `.unavailable(USD)`: progression is off and the no-balance
+    /// stack, CTA included, is hidden, so no user could tap it.
     private func freezeUSD(_ defaults: UserDefaults) {
         XCTAssertEqual(WalletCurrencyStore(defaults: defaults).freeze(usd), .frozen(usd))
+        cacheUSDScale(defaults)
     }
 
     /// The dollar storefront's snooze scale, so a dollar price resolves.
@@ -171,6 +237,7 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
     }
 
     private func assertRefusedAsLocked(_ fixture: Fixture, _ label: String) {
+        assertRefusalLogged(fixture, cause: "ledger unreadable", label)
         XCTAssertTrue(fixture.requested.isEmpty, "A locked ledger must not be charged for — \(label)")
         XCTAssertEqual(fixture.begins, 0, label)
         XCTAssertFalse(fixture.controller.noBalancePurchaseInFlight, label)
@@ -185,13 +252,44 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
                       "The refusal is not a stuck purchase — \(label)")
     }
 
+    /// The currency notice, not a purchase: nothing begins, and the CTA is
+    /// tappable again once the notice is up.
+    private func assertRefusedAsForeign(_ fixture: Fixture, wallet: Currency, storefront: Currency, _ label: String) {
+        assertRefusalLogged(fixture, cause: "wallet in \(wallet.code), pack in \(storefront.code)", label)
+        XCTAssertTrue(fixture.requested.isEmpty, "A foreign pack must not be charged for — \(label)")
+        XCTAssertEqual(fixture.begins, 0, label)
+        XCTAssertFalse(fixture.controller.noBalancePurchaseInFlight, label)
+        let alert = fixture.controller.alerts.first
+        XCTAssertEqual(fixture.controller.alerts.count, 1, label)
+        XCTAssertEqual(alert?.title, ForeignCurrencyNotice.alertTitle, label)
+        XCTAssertEqual(alert?.message, ForeignCurrencyNotice.message(wallet: wallet, storefront: storefront), label)
+        XCTAssertEqual(alert?.actions.map(\.title), [Localized.text("deposit.foreign_currency.dismiss")], label)
+        XCTAssertTrue(fixture.controller.applePayNoBalanceButton?.isEnabled == true,
+                      "The notice is not a stuck purchase — \(label)")
+    }
+
+    /// One notice-level line per refused tap, naming the pack the CTA quoted.
+    private func assertRefusalLogged(_ fixture: Fixture, cause: String, _ label: String) {
+        let lines = fixture.logged.filter { $0.message.hasPrefix(Self.refusalPrefix) }
+        XCTAssertEqual(lines.map(\.category), [.ui], label)
+        XCTAssertEqual(lines.map(\.level), [.default], label)
+        let product = fixture.quotedProductID ?? "none"
+        XCTAssertEqual(lines.first?.message, "\(Self.refusalPrefix) product=\(product) — \(cause)", label)
+    }
+
     private final class Fixture {
-        static let sku = "io.mobilife.snoozepay.balance.499"
+        nonisolated static let sku = "io.mobilife.snoozepay.balance.499"
         let defaults: UserDefaults
         let wallet: BalanceService
         let controller: GateController
+        /// The catalogue `offerProvider` reads, live.
+        var offers: [TopUpOffer]
         var requested: [String] = []
         var begins = 0
+        /// Lines logged during `tap()`.
+        var logged: [LoggedLine] = []
+        /// The pack the CTA quoted when it was last tapped.
+        var quotedProductID: String?
 
         /// `skus`: the catalogue, every pack priced as `pack`.
         init(test: XCTestCase, pack: (code: String, price: String), skus: [String] = [Fixture.sku],
@@ -201,11 +299,12 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
             let center = NotificationCenter()
             wallet = BalanceService(defaults: defaults, notificationCenter: center)
             let price = try XCTUnwrap(Decimal(string: pack.price))
-            let offers = skus.compactMap {
+            let catalogue = skus.compactMap {
                 TopUpOffer(productID: $0, price: price, currencyCode: pack.code,
                            displayPrice: "\(pack.price) \(pack.code)")
             }
-            XCTAssertEqual(offers.count, skus.count, "Every pack is a valid offer")
+            XCTAssertEqual(catalogue.count, skus.count, "Every pack is a valid offer")
+            offers = catalogue
             let backend = TestAlarmKitBackend()
             let scheduler = AlarmScheduler(notificationCenter: InertNotificationCenter(), alarmKit: backend)
             let model = AlarmFiringViewModel(
@@ -217,14 +316,42 @@ final class FiringNoBalancePurchaseGateTests: XCTestCase {
             controller.noBalancePurchase = AlarmFiringNoBalancePurchase(
                 controller: controller, center: center,
                 dispatch: { [weak self] in self?.requested.append($0) },
-                offerProvider: { id in offers.first { $0.productID == id } },
+                offerProvider: { [weak self] id in self?.offers.first { $0.productID == id } },
                 beginFeedback: { [weak self] in self?.begins += 1 }, endFeedback: {}
             )
             controller.loadViewIfNeeded()
         }
 
-        func tap() throws {
-            try XCTUnwrap(controller.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+        /// A user's tap. `sendActions` would also fire a control no finger can
+        /// reach, so that is a failure here and nothing is sent.
+        func tap(file: StaticString = #filePath, line: UInt = #line) throws {
+            let button = try XCTUnwrap(controller.applePayNoBalanceButton, file: file, line: line)
+            if let reason = unreachable(button) {
+                return XCTFail("Tapped a CTA no user can tap: \(reason)", file: file, line: line)
+            }
+            quotedProductID = controller.noBalancePurchase.offer?.productID
+            var lines: [LoggedLine] = []
+            AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+                button.sendActions(for: .touchUpInside)
+            })
+            logged += lines
+        }
+
+        /// Why no finger reaches `button`, or `nil` when one does: disabled, or
+        /// it or an ancestor up to the screen's view is hidden, transparent to
+        /// hit-testing, or not interactive.
+        private func unreachable(_ button: UIControl) -> String? {
+            guard button.isEnabled else { return "disabled" }
+            var view: UIView? = button
+            while let current = view {
+                let name = String(describing: type(of: current))
+                if current.isHidden { return "\(name) is hidden" }
+                if current.alpha < 0.01 { return "\(name) is transparent" }
+                if !current.isUserInteractionEnabled { return "\(name) takes no touches" }
+                if current === controller.view { return nil }
+                view = current.superview
+            }
+            return "not on the screen's view"
         }
     }
 }

@@ -42,7 +42,9 @@ final class AlarmFiringNoBalancePurchase {
     ///
     /// Sufficiency is reckoned in the locked price's currency (#1142): a
     /// pristine wallet on a dollar storefront picks the minimal dollar pack. A
-    /// price the wallet cannot hold never reaches here (it is stranded).
+    /// price the wallet can no longer hold is stranded and the next pass hides
+    /// the CTA, but a tap before that pass still reads a pack here, and the
+    /// gate refuses it as below (#1181).
     ///
     /// `acceptsPurchase` only ranks the packs; it never empties the pick. When
     /// the wallet refuses the whole storefront (foreign currency, unreadable

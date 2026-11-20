@@ -20,16 +20,9 @@ final class SnoozeSliderCell: UITableViewCell {
     /// In-card caps caption «Длительность откладывания»
     /// (`docs/design/snoozepay-2026-04-27/project/components/SPMore2.jsx:200` contains "Длительность откладывания").
     /// Lives inside the card so the table no longer needs a section header (#278).
+    /// Rendered by `renderText()`, at the cell's content size category.
     private let captionLabel: UILabel = {
         let label = UILabel()
-        label.attributedText = NSAttributedString(
-            string: Localized.text("create_alarm.snooze.caps").uppercased(),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -39,7 +32,8 @@ final class SnoozeSliderCell: UITableViewCell {
     private let hintLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.snooze.hint")
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -88,7 +82,8 @@ final class SnoozeSliderCell: UITableViewCell {
     private static func makeBoundLabel(_ text: String, alignment: NSTextAlignment) -> UILabel {
         let label = UILabel()
         label.text = text
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg4
         label.textAlignment = alignment
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -108,6 +103,13 @@ final class SnoozeSliderCell: UITableViewCell {
     /// inside the supported 1...15 range.
     var onValueChanged: ((Int) -> Void)?
 
+    /// The configured reading, kept so a content size change can re-render it.
+    private var minutes: Int?
+    /// Up to `.large`: the reading beside the caption block, as before.
+    private var readingBeside: [NSLayoutConstraint] = []
+    /// From XL: the reading on its own line under the hint (#1111).
+    private var readingUnder: [NSLayoutConstraint] = []
+
     // MARK: - Init
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -119,6 +121,9 @@ final class SnoozeSliderCell: UITableViewCell {
         SPSliderThumb.install(on: slider, trait: traitCollection)
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: SnoozeSliderCell, _) in
             SPSliderThumb.install(on: cell.slider, trait: cell.traitCollection)
+        }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: SnoozeSliderCell, _) in
+            cell.renderText()
         }
     }
 
@@ -164,18 +169,11 @@ final class SnoozeSliderCell: UITableViewCell {
                 constant: AppSpacing.cardHorizontalPadding
             ),
             hintLabel.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 2),
-            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
 
             valueLabel.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor,
                 constant: -AppSpacing.cardHorizontalPadding
             ),
-            // Centred on the caption block, not baseline-locked to its
-            // first line. The canon's `alignItems: baseline` pairs a 12pt
-            // caps line with a 20pt mono readout, so the number's cap
-            // height overshot the caps line and the value read as stuck to
-            // the card's ceiling while the two-line label hung below it.
-            valueLabel.centerYAnchor.constraint(equalTo: captionBlock.centerYAnchor),
             // Reserve a fixed minimum so «1 мин» / «15 мин» don't reflow.
             valueLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 56),
 
@@ -187,15 +185,75 @@ final class SnoozeSliderCell: UITableViewCell {
                 equalTo: contentView.trailingAnchor,
                 constant: -AppSpacing.cardHorizontalPadding
             ),
-            slider.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
 
             // Range bounds under the track (space-between, marginTop 8 in JSX).
             minBoundLabel.leadingAnchor.constraint(equalTo: slider.leadingAnchor),
             minBoundLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: AppSpacing.sm),
             maxBoundLabel.trailingAnchor.constraint(equalTo: slider.trailingAnchor),
-            maxBoundLabel.firstBaselineAnchor.constraint(equalTo: minBoundLabel.firstBaselineAnchor),
-            minBoundLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5)
+            maxBoundLabel.firstBaselineAnchor.constraint(equalTo: minBoundLabel.firstBaselineAnchor)
         ])
+        makeReadingLayouts(besides: captionBlock)
+        renderText()
+    }
+
+    /// The two arrangements of the reading (#1111). Beside the caption block
+    /// is today's; from XL the caption alone outgrows the room beside the
+    /// reading on a 375pt card, so caption and hint take the full width and
+    /// the reading gets its own line above the track.
+    private func makeReadingLayouts(besides captionBlock: UILayoutGuide) {
+        let padding = AppSpacing.cardHorizontalPadding
+        // The table hands a self-sized row ~1pt of slack, and on main the
+        // caption has always taken it (measured: 17.67pt tall, not 16.67).
+        // It now hugs one step looser than anything else in the column, so
+        // that is a rule instead of a hugging tie.
+        captionLabel.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+        readingBeside = [
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -AppSpacing.sm),
+            // Centred on the caption block, not baseline-locked to its
+            // first line. The canon's `alignItems: baseline` pairs a 12pt
+            // caps line with a 20pt mono readout, so the number's cap
+            // height overshot the caps line and the value read as stuck to
+            // the card's ceiling while the two-line label hung below it.
+            valueLabel.centerYAnchor.constraint(equalTo: captionBlock.centerYAnchor),
+            slider.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
+            minBoundLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -AppSpacing.sp5)
+        ]
+        readingUnder = [
+            captionLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -padding),
+            hintLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -padding),
+            valueLabel.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: AppSpacing.sm),
+            valueLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: padding),
+            slider.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: AppSpacing.sm),
+            // Top-down with an open bottom: the slack stays under the card's
+            // content instead of stretching a label.
+            minBoundLabel.bottomAnchor.constraint(
+                lessThanOrEqualTo: contentView.bottomAnchor, constant: -AppSpacing.sp5
+            )
+        ]
+    }
+
+    /// Caption, reading and arrangement at the cell's content size category.
+    /// Every font is today's role at `.large`, so the card is unchanged there
+    /// (#1111).
+    private func renderText() {
+        let traits = traitCollection
+        let capsFont = AppTypography.scaledCaps(compatibleWith: traits)
+        captionLabel.attributedText = NSAttributedString(
+            string: Localized.text("create_alarm.snooze.caps").uppercased(),
+            attributes: [
+                .font: capsFont,
+                .kern: AppTypography.kerning(AppTypography.capsKerning, of: AppTypography.caps, scaledTo: capsFont),
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        if let minutes {
+            valueLabel.attributedText = Self.valueText(minutes, scaledTo: traits)
+        }
+        let stacked = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory)
+        NSLayoutConstraint.deactivate(stacked ? readingBeside : readingUnder)
+        NSLayoutConstraint.activate(stacked ? readingUnder : readingBeside)
+        captionLabel.numberOfLines = stacked ? 0 : 1
+        valueLabel.textAlignment = stacked ? .natural : .right
     }
 
     override func prepareForReuse() {
@@ -211,7 +269,8 @@ final class SnoozeSliderCell: UITableViewCell {
     func configure(minutes: Int) {
         let clamped = min(max(minutes, Self.minMinutes), Self.maxMinutes)
         slider.value = Float(clamped)
-        valueLabel.attributedText = Self.valueText(clamped)
+        self.minutes = clamped
+        valueLabel.attributedText = Self.valueText(clamped, scaledTo: traitCollection)
     }
 
     // MARK: - Actions
@@ -222,7 +281,8 @@ final class SnoozeSliderCell: UITableViewCell {
         let rounded = Int(roundf(slider.value))
         let clamped = min(max(rounded, Self.minMinutes), Self.maxMinutes)
         slider.value = Float(clamped)
-        valueLabel.attributedText = Self.valueText(clamped)
+        self.minutes = clamped
+        valueLabel.attributedText = Self.valueText(clamped, scaledTo: traitCollection)
         onValueChanged?(clamped)
     }
 
@@ -266,17 +326,23 @@ final class SnoozeSliderCell: UITableViewCell {
     /// correct. Reading what this method returns removes the label from the
     /// oracle; that the cell then renders it is pinned separately by
     /// `AlarmEditorCopyTests.testSnoozeSliderReadingKeepsItsNumberInTheHeadlineFace`.
-    static func valueText(_ minutes: Int) -> NSAttributedString {
-        Localized.attributed(
+    ///
+    /// `traits` scales both runs to that content size category (#1111), the
+    /// unit along `.headline` and the number along `.title3`, the styles whose
+    /// default sizes they already are. Without it the fixed roles are used.
+    static func valueText(_ minutes: Int, scaledTo traits: UITraitCollection? = nil) -> NSAttributedString {
+        let unitFont = traits.map { AppTypography.scaled(AppTypography.h4, as: .headline, compatibleWith: $0) }
+        let numberFont = traits.map { AppTypography.scaled(AppTypography.moneyMd, as: .title3, compatibleWith: $0) }
+        return Localized.attributed(
             "create_alarm.snooze.minutes",
             attributes: [
-                .font: AppTypography.h4,
+                .font: unitFont ?? AppTypography.h4,
                 .foregroundColor: AppColors.fg3
             ],
             replacing: NSAttributedString(
                 string: String(format: "%lld", locale: AppLocale.display, arguments: [minutes]),
                 attributes: [
-                    .font: AppTypography.moneyMd,
+                    .font: numberFont ?? AppTypography.moneyMd,
                     .foregroundColor: AppColors.fg1
                 ]
             ),

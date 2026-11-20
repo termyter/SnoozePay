@@ -182,6 +182,11 @@ final class CreateAlarmCardInsetTests: XCTestCase {
     }
 
     private func host(_ cell: UITableViewCell) {
+        // The inset is the default size's; from XL several rows rearrange
+        // (#1111), so a simulator set to large text must not leak in.
+        cell.traitOverrides.preferredContentSizeCategory = .large
+        cell.updateTraitsIfNeeded()
+        XCTAssertEqual(cell.traitCollection.preferredContentSizeCategory, .large, "override did not land")
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: cardWidth, height: 600))
         window.isHidden = false
         hostWindows.append(window)
