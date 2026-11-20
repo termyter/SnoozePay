@@ -116,6 +116,8 @@ final class AlarmCell: UITableViewCell {
     /// size change can re-render them at the new size (#1111).
     private var timeText = ""
     private var capsText = ""
+    /// The row's trailing spacer, rebuilt with the pills; hidden once they stack.
+    private weak var pillsSpacer: UIView?
 
     /// Pins the switch to the middle of the first caps line; follows the caps
     /// line height as it scales.
@@ -431,6 +433,7 @@ final class AlarmCell: UITableViewCell {
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         pillsStack.addArrangedSubview(spacer)
+        pillsSpacer = spacer
     }
 
     /// Render the clock and caps rows at the cell's content size category and
@@ -468,15 +471,18 @@ final class AlarmCell: UITableViewCell {
 
         // Accessibility sizes: a time is one unit and never wraps ("07:0|0"),
         // so one that outgrows the card shrinks to fit — the 0.5 floor holds
-        // "12:45 PM" at the largest size on a 375pt phone. The pills stack
-        // vertically instead of running off the card's edge.
+        // "12:45 PM" at the largest size on a 375pt phone.
         let accessible = traits.preferredContentSizeCategory.isAccessibilityCategory
         clockLabel.minimumScaleFactor = accessible ? 0.5 : 0.7
         clockBelowToggle.isActive = accessible
-        pillsStack.axis = accessible ? .vertical : .horizontal
-        pillsStack.alignment = accessible ? .leading : .center
+        // From XL the three pills no longer fit one row of a 375pt card
+        // (`AppTypography.stacksDenseRows`): they stack instead of squeezing
+        // one of them into a mid-word wrap.
+        let stacked = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory)
+        pillsStack.axis = stacked ? .vertical : .horizontal
+        pillsStack.alignment = stacked ? .leading : .center
         // The trailing spacer only matters in a row.
-        pillsStack.arrangedSubviews.filter { !($0 is SPPill) }.forEach { $0.isHidden = accessible }
+        pillsSpacer?.isHidden = stacked
     }
 
     private func applyEnabledTone(_ enabled: Bool) {

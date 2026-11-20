@@ -101,6 +101,9 @@ final class SPAlarmsListEmptyState: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentInsetAdjustmentBehavior = .never
         view.alwaysBounceVertical = false
+        // The CTA lives inside: highlight on touch-down as before, not after
+        // the scroll view's ~150ms wait to see whether a pan begins.
+        view.delaysContentTouches = false
         return view
     }()
 

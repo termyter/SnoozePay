@@ -252,7 +252,10 @@ final class SPAlarmsListHeader: UIView {
     private let balanceCapsLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.numberOfLines = 0
+        // One word: it never wraps. Above the amount's 750 so, when the row is
+        // tight, the shrink-to-fit amount gives way and «БАЛАНС» stays whole.
+        label.numberOfLines = 1
+        label.setContentCompressionResistancePriority(UILayoutPriority(751), for: .horizontal)
         return label
     }()
 
@@ -276,6 +279,11 @@ final class SPAlarmsListHeader: UIView {
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.6
         label.numberOfLines = 1
+        // When the 64pt tile floor leaves the pill taller than its text, the
+        // amount and the hint would share the slack arbitrarily: the solver's
+        // pick depended on constraint activation order and moved the amount
+        // 1.7pt down on a cold start (#1111). The amount hugs; the hint takes it.
+        label.setContentHuggingPriority(.defaultHigh, for: .vertical)
         return label
     }()
 
@@ -315,11 +323,13 @@ final class SPAlarmsListHeader: UIView {
     /// would flash "0 ₽" on construction.
     private var hasBalance = false
 
-    /// The amount sits after «БАЛАНС» on one baseline by default, and on its
-    /// own line below it at accessibility sizes, where the row cannot fit
-    /// beside the top-up button (#1111).
-    private var valueBesideCaps: [NSLayoutConstraint] = []
-    private var valueBelowCaps: [NSLayoutConstraint] = []
+    /// Default sizes: the amount after «БАЛАНС» on one baseline, the button
+    /// centred, the one-line hint in the column left of the button.
+    /// From XL up (`AppTypography.stacksDenseRows`) that row no longer fits a
+    /// 375pt phone: the amount drops under «БАЛАНС», the button moves to the
+    /// top, and the hint wraps across the full width below it (#1111).
+    private var rowLayout: [NSLayoutConstraint] = []
+    private var stackedLayout: [NSLayoutConstraint] = []
 
     // MARK: - Init
 
@@ -482,9 +492,8 @@ final class SPAlarmsListHeader: UIView {
             walletIconImageView.centerXAnchor.constraint(equalTo: walletIconHost.centerXAnchor),
             walletIconImageView.centerYAnchor.constraint(equalTo: walletIconHost.centerYAnchor),
 
-            // Top-up button — sm, trailing.
+            // Top-up button — sm, trailing; vertical placement per arrangement.
             topUpButton.trailingAnchor.constraint(equalTo: pillButton.trailingAnchor, constant: -AppSpacing.sp3),
-            topUpButton.centerYAnchor.constraint(equalTo: pillButton.centerYAnchor),
 
             // Balance value row — baseline-aligned caps «БАЛАНС» + amount.
             balanceCapsLabel.leadingAnchor.constraint(
@@ -509,12 +518,8 @@ final class SPAlarmsListHeader: UIView {
                 constant: AppSpacing.sp3
             ),
             balanceHintLabel.topAnchor.constraint(
-                equalTo: balanceValueLabel.bottomAnchor,
+                greaterThanOrEqualTo: balanceValueLabel.bottomAnchor,
                 constant: AppSpacing.sp1 / 2
-            ),
-            balanceHintLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: topUpButton.leadingAnchor,
-                constant: -AppSpacing.sp3
             ),
             hintBottom,
 
@@ -525,18 +530,44 @@ final class SPAlarmsListHeader: UIView {
             bottomHairline.heightAnchor.constraint(equalToConstant: 1)
         ])
 
-        valueBesideCaps = [
+        rowLayout = [
             balanceValueLabel.leadingAnchor.constraint(
                 equalTo: balanceCapsLabel.trailingAnchor,
                 constant: AppSpacing.sp2
             ),
-            balanceValueLabel.firstBaselineAnchor.constraint(equalTo: balanceCapsLabel.firstBaselineAnchor)
+            balanceValueLabel.firstBaselineAnchor.constraint(equalTo: balanceCapsLabel.firstBaselineAnchor),
+            topUpButton.centerYAnchor.constraint(equalTo: pillButton.centerYAnchor),
+            balanceHintLabel.topAnchor.constraint(
+                equalTo: balanceValueLabel.bottomAnchor,
+                constant: AppSpacing.sp1 / 2
+            ),
+            balanceHintLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: topUpButton.leadingAnchor,
+                constant: -AppSpacing.sp3
+            )
         ]
-        valueBelowCaps = [
+        // The hint sits right under the amount when the button allows it
+        // (750), and never above the button's bottom edge.
+        let hintUnderAmount = balanceHintLabel.topAnchor.constraint(
+            equalTo: balanceValueLabel.bottomAnchor,
+            constant: AppSpacing.sp1 / 2
+        )
+        hintUnderAmount.priority = .defaultHigh
+        stackedLayout = [
             balanceValueLabel.leadingAnchor.constraint(equalTo: balanceCapsLabel.leadingAnchor),
             balanceValueLabel.topAnchor.constraint(
                 equalTo: balanceCapsLabel.bottomAnchor,
                 constant: AppSpacing.sp1 / 2
+            ),
+            topUpButton.topAnchor.constraint(equalTo: pillButton.topAnchor, constant: AppSpacing.sp3),
+            hintUnderAmount,
+            balanceHintLabel.topAnchor.constraint(
+                greaterThanOrEqualTo: topUpButton.bottomAnchor,
+                constant: AppSpacing.sp2
+            ),
+            balanceHintLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: pillButton.trailingAnchor,
+                constant: -AppSpacing.sp3
             )
         ]
 
@@ -573,10 +604,12 @@ final class SPAlarmsListHeader: UIView {
                 .foregroundColor: AppColors.fg3
             ]
         )
-        let accessible = traits.preferredContentSizeCategory.isAccessibilityCategory
-        NSLayoutConstraint.deactivate(accessible ? valueBesideCaps : valueBelowCaps)
-        NSLayoutConstraint.activate(accessible ? valueBelowCaps : valueBesideCaps)
-        balanceHintLabel.numberOfLines = accessible ? 0 : 1
+        let stacked = AppTypography.stacksDenseRows(traits.preferredContentSizeCategory)
+        NSLayoutConstraint.deactivate(stacked ? rowLayout : stackedLayout)
+        NSLayoutConstraint.activate(stacked ? stackedLayout : rowLayout)
+        // One line shrinking to 0.8 in the row, as before; wrapping when stacked.
+        balanceHintLabel.numberOfLines = stacked ? 0 : 1
+        balanceHintLabel.adjustsFontSizeToFitWidth = !stacked
         // Before the first `setBalance` there is no amount to tone by.
         applyTone(hasBalance ? Self.tone(for: currentBalance, isLow: currentIsLow) : pillTone)
     }
