@@ -281,6 +281,14 @@ extension AlarmFiringViewController {
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
+
+    /// Ask to Buy / SCA (#1183): not a failure, so no failure title.
+    func presentNoBalancePurchasePendingAlert() {
+        let alert = UIAlertController(title: nil, message: StoreKitService.purchasePendingMessage,
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
+        present(alert, animated: true)
+    }
 }
 
 // MARK: - Center block storage

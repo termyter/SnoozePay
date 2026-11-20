@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class FiringDirectPurchaseTerminalTests: XCTestCase {
-    func testActualButtonKeepsPendingBusyAcrossBalanceChangeThenCancellationAllowsRetry() throws {
+    func testActualButtonStaysBusyAcrossBalanceChangeThenCancellationAllowsRetry() throws {
         let fixture = Fixture()
         defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
@@ -19,7 +19,6 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         button.sendActions(for: .touchUpInside)
         XCTAssertEqual(fixture.calls.requested, [sku(499)])
         XCTAssertEqual(fixture.calls.begins, 1)
-        fixture.post(StoreKitService.purchasePendingNotification)
         XCTAssertTrue(fixture.wallet.topUp(amount: 1))
         XCTAssertEqual(controller.updates, initialUpdates + 1)
         XCTAssertTrue(controller.noBalancePurchaseInFlight)
@@ -41,7 +40,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(controller.dismissals, 0)
         XCTAssertEqual(fixture.wallet.balance, 1)
         XCTAssertEqual(fixture.calls.ends, 1)
-        XCTAssertEqual(fixture.center.removals, 3)
+        XCTAssertEqual(fixture.center.removals, 4)
         fixture.post(StoreKitService.purchaseCancelledNotification)
         XCTAssertEqual(fixture.calls.ends, 1)
         button.sendActions(for: .touchUpInside)
@@ -79,7 +78,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertEqual(fixture.wallet.balance, 1, "Feedback must not credit the wallet")
         XCTAssertEqual(controller.dismissals, 0)
         XCTAssertEqual(fixture.calls.ends, 2)
-        XCTAssertEqual(fixture.center.removals, 6)
+        XCTAssertEqual(fixture.center.removals, 8)
         fixture.post(StoreKitService.purchaseCompletedNotification)
         XCTAssertEqual(controller.updates, updates + 1)
         button.sendActions(for: .touchUpInside)
@@ -93,7 +92,6 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         defer { fixture.close() }
         let controller = try XCTUnwrap(fixture.controller)
         try XCTUnwrap(controller.applePayNoBalanceButton).sendActions(for: .touchUpInside)
-        fixture.post(StoreKitService.purchasePendingNotification)
         let stop = try XCTUnwrap(controller.noBalanceDismissButton)
         XCTAssertTrue(stop.isEnabled)
         XCTAssertTrue(fixture.store.hasPurchaseFeedbackSubscriber)
@@ -102,7 +100,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
             summaries += 1
             XCTAssertFalse(store.hasPurchaseFeedbackSubscriber)
             XCTAssertEqual(calls.ends, 1)
-            XCTAssertEqual(center.removals, 3)
+            XCTAssertEqual(center.removals, 4)
         }
         stop.sendActions(for: .touchUpInside)
         XCTAssertEqual(summaries, 1, "Exercise the real ghost Stop handler without mounting the summary")
@@ -119,9 +117,56 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         fixture.post(StoreKitService.purchaseCancelledNotification)
         XCTAssertTrue(controller.alerts.isEmpty)
         XCTAssertEqual(fixture.calls.ends, 1)
-        XCTAssertEqual(fixture.center.removals, 3)
+        XCTAssertEqual(fixture.center.removals, 4)
         XCTAssertEqual(fixture.wallet.balance, 0)
         XCTAssertEqual(controller.dismissals, 0)
+    }
+
+    /// #1183: Ask to Buy / SCA ends the tap with an approval notice, not a dead
+    /// button; the approval, arriving later through `Transaction.updates`, still credits.
+    func testPendingEndsTheTapWithAnApprovalNoticeAndALaterApprovalStillCredits() async throws {
+        let fixture = Fixture()
+        defer { fixture.close() }
+        let controller = try XCTUnwrap(fixture.controller)
+        let button = try XCTUnwrap(controller.applePayNoBalanceButton)
+        button.sendActions(for: .touchUpInside)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        fixture.post(StoreKitService.purchasePendingNotification)
+        XCTAssertFalse(controller.noBalancePurchaseInFlight)
+        XCTAssertTrue(button.isEnabled)
+        XCTAssertTrue(controller.chooseAmountLink?.isEnabled == true)
+        XCTAssertEqual(controller.alerts.map(\.message), [StoreKitService.purchasePendingMessage])
+        XCTAssertNil(controller.alerts.first?.title, "Pending is not a purchase failure")
+        XCTAssertEqual(fixture.calls.ends, 1)
+        XCTAssertEqual(fixture.center.removals, 4)
+
+        let approved = RestorableTopUp(transactionID: 7, productID: sku(499), currency: .rub, transactionPrice: 499,
+                                       purchaseDate: Date(timeIntervalSince1970: 1_700_000_000))
+        var finishes = 0
+        await fixture.store.applyVerifiedPurchase(approved, balance: fixture.wallet) { finishes += 1 }
+        XCTAssertEqual(finishes, 1)
+        XCTAssertEqual(fixture.wallet.balance, 499)
+        XCTAssertTrue(controller.noBalanceContainer?.isHidden == true, "The credit redraws the ring as solvent")
+        XCTAssertEqual(fixture.poster.requests.map(\.content.title),
+                       [Localized.text("deposit.notification.credited.title")])
+        XCTAssertEqual(controller.alerts.count, 1)
+    }
+
+    /// #1183: once Stop is requested a late result must not re-enable the
+    /// «choose amount» link, whose handler would then do nothing.
+    func testLateResultAfterFinishRequestedLeavesTheChooseAmountLinkDisabled() throws {
+        for terminal in [StoreKitService.purchasePendingNotification, StoreKitService.purchaseCancelledNotification] {
+            let fixture = Fixture()
+            defer { fixture.close() }
+            let controller = try XCTUnwrap(fixture.controller)
+            try XCTUnwrap(controller.applePayNoBalanceButton).sendActions(for: .touchUpInside)
+            controller.viewModel.dismiss()
+            XCTAssertTrue(controller.viewModel.finishRequested)
+            fixture.post(terminal)
+            XCTAssertFalse(controller.noBalancePurchaseInFlight)
+            XCTAssertFalse(try XCTUnwrap(controller.chooseAmountLink).isEnabled, "\(terminal.rawValue)")
+            XCTAssertFalse(try XCTUnwrap(controller.applePayNoBalanceButton).isEnabled, "\(terminal.rawValue)")
+        }
     }
 
     func testOwnerTeardownBalancesActiveFeedbackAndRemovesAllTokens() throws {
@@ -145,7 +190,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertNil(controller)
         XCTAssertNil(owner)
         XCTAssertEqual(fixture.calls.ends, 1)
-        XCTAssertEqual(fixture.center.removals, 5)
+        XCTAssertEqual(fixture.center.removals, 6)
         fixture.post(StoreKitService.purchaseFailedNotification)
         fixture.post(StoreKitService.purchaseCompletedNotification)
         fixture.post(StoreKitService.purchaseCancelledNotification)
@@ -176,7 +221,6 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         fixture.post(StoreKitService.productsLoadedNotification)
         XCTAssertTrue(loaded === controller.applePayNoBalanceButton)
         loaded.sendActions(for: .touchUpInside)
-        fixture.post(StoreKitService.purchasePendingNotification)
         fixture.offer = TopUpOffer(productID: sku(499), price: 4.99,
                                    currencyCode: "EUR", displayPrice: "4,99 €")
         fixture.post(StoreKitService.productsLoadedNotification)

@@ -102,6 +102,14 @@ final class AlarmFiringNoBalancePurchase {
             ) { [weak self] note in
                 guard let self, self.finish() else { return }
                 self.controller?.presentNoBalancePurchaseFailureAlert(message: note.userInfo?[messageKey] as? String)
+            },
+            // Ask to Buy / SCA ends this tap (#1183). An approval still credits
+            // through `Transaction.updates`; the balance observer redraws then.
+            center.addObserver(
+                forName: StoreKitService.purchasePendingNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let self, self.finish() else { return }
+                self.controller?.presentNoBalancePurchasePendingAlert()
             }
         ]
         beginFeedback()
@@ -112,7 +120,9 @@ final class AlarmFiringNoBalancePurchase {
         guard let controller, controller.noBalancePurchaseInFlight else { return false }
         controller.noBalancePurchaseInFlight = false
         controller.refreshNoBalanceCatalog()
-        controller.chooseAmountLink?.isEnabled = true
+        // The link's own tap guard, as `refreshNoBalanceCatalog` gates the CTA:
+        // a late result after Stop must not wake a link that does nothing (#1183).
+        controller.chooseAmountLink?.isEnabled = !controller.viewModel.finishRequested
         terminalTokens.forEach { center.removeObserver($0) }
         terminalTokens.removeAll()
         if observingFeedback {

@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class FiringTopUpAutoResumeTests: XCTestCase {
-    func testOverdueCancellationResumesOnceAndPendingCannotResume() throws {
+    func testOverdueCancellationResumesOnce() throws {
         let fixture = try Fixture()
         defer { fixture.clear() }
         let sheet = fixture.makeSheet()
@@ -12,7 +12,6 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         button.sendActions(for: .touchUpInside)
         sheet.handleAutoResume()
         sheet.handleAutoResume()
-        fixture.post(StoreKitService.purchasePendingNotification)
         XCTAssertFalse(button.isEnabled)
         XCTAssertEqual(fixture.resumes, 0)
         XCTAssertTrue(try countdown(in: sheet).contains("00:00"))
@@ -25,6 +24,31 @@ final class FiringTopUpAutoResumeTests: XCTestCase {
         XCTAssertEqual(fixture.requested.count, 1, "An ended sheet cannot start another purchase")
         XCTAssertTrue(try countdown(in: sheet).contains("00:00"), "No fresh 60-second period")
         try fixture.assertWalletUnchanged()
+    }
+
+    /// #1183: pending ends the tap with an approval notice. Its OK re-enables a
+    /// retry, or resumes an expired pause once — a decline that never arrives
+    /// cannot keep the alarm silent.
+    func testPendingNoticeEndsTheTapAndItsAcknowledgementHonorsTheDeadline() throws {
+        for overdue in [false, true] {
+            let fixture = try Fixture()
+            defer { fixture.clear() }
+            let sheet = fixture.makeSheet()
+            let button = try purchaseButton(in: sheet)
+            button.sendActions(for: .touchUpInside)
+            if overdue { sheet.handleAutoResume() }
+            fixture.post(StoreKitService.purchasePendingNotification)
+            fixture.post(StoreKitService.purchasePendingNotification)
+            XCTAssertEqual(fixture.alerts.map(\.message), [StoreKitService.purchasePendingMessage])
+            XCTAssertNil(fixture.alerts.first?.title, "Pending is not a purchase failure")
+            XCTAssertEqual(fixture.resumes, 0, "The notice is read before the alarm resumes")
+            sheet.acknowledgePurchaseFailure()
+            XCTAssertEqual(fixture.resumes, overdue ? 1 : 0)
+            XCTAssertEqual(button.isEnabled, !overdue)
+            button.sendActions(for: .touchUpInside)
+            XCTAssertEqual(fixture.requested.count, overdue ? 1 : 2)
+            try fixture.assertWalletUnchanged()
+        }
     }
 
     func testFailureAcknowledgementHonorsDeadlineInEitherEventOrder() throws {

@@ -64,7 +64,9 @@ final class TopUpSuccessCurrencyTests: XCTestCase {
             XCTAssertTrue(button.isEnabled)
             button.sendActions(for: .touchUpInside)
             fixture.center.post(name: StoreKitService.purchasePendingNotification, object: nil)
-            XCTAssertFalse(button.isEnabled)
+            // Pending ends the tap (#1183); the firing sheet holds it for the notice's OK.
+            XCTAssertEqual(button.isEnabled, !firing)
+            // The approval still lands as the success of this purchase.
             let usd = try XCTUnwrap(Currency(code: "USD"))
             XCTAssertEqual(fixture.balance.topUpFromPurchase(amount: 0.49, currency: usd), .credited)
             fixture.postSuccess(0.49)

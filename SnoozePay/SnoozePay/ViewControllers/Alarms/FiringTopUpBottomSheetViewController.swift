@@ -143,6 +143,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
     private var purchaseCancelledObserver: NSObjectProtocol?
+    private var purchasePendingObserver: NSObjectProtocol?
     /// Optional product dispatch keeps this real form testable without an App Store catalogue.
     private let purchaseProduct: ((String) -> Void)?
     private let notificationCenter: NotificationCenter
@@ -357,6 +358,7 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
         if let token = purchaseCancelledObserver {
             notificationCenter.removeObserver(token)
         }
+        if let token = purchasePendingObserver { notificationCenter.removeObserver(token) }
         autoResumeTimer?.invalidate()
         countdownTimer?.invalidate()
     }
@@ -690,6 +692,17 @@ final class FiringTopUpBottomSheetViewController: UIViewController {
             self.resumeIfDeadlineExpired()
             self.updatePurchaseAvailability()
         }
+        purchasePendingObserver = center.addObserver(
+            forName: StoreKitService.purchasePendingNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.handlePurchasePending() }
+    }
+
+    /// Ask to Buy / SCA ends this tap (#1183): a decline may never arrive, and
+    /// a pause held for it would keep the alarm silent. The notice's OK takes
+    /// the failure path's acknowledgement, so an expired deadline resumes then.
+    private func handlePurchasePending() {
+        guard purchaseInFlight else { return }
+        handlePurchaseFailure(message: StoreKitService.purchasePendingMessage, title: nil)
     }
 }
 
@@ -798,14 +811,18 @@ extension FiringTopUpBottomSheetViewController {
         }
     }
 
-    private func handlePurchaseFailure(message: String?, title: String? = nil, dismissTitle: String? = nil) {
+    /// `title: nil` is the pending notice, which is not a failure.
+    private func handlePurchaseFailure(
+        message: String?, title: String? = Localized.text("firing.alert.purchase_failed.title"),
+        dismissTitle: String? = nil
+    ) {
         guard !pauseEnded, successReceipt == nil, !failureAcknowledgementPending else { return }
         failureAcknowledgementPending = true
         purchaseInFlight = false
         updatePurchaseAvailability()
 
         let alert = UIAlertController(
-            title: title ?? Localized.text("firing.alert.purchase_failed.title"),
+            title: title,
             message: message ?? Localized.text("firing.alert.purchase_failed.message"),
             preferredStyle: .alert
         )

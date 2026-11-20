@@ -48,6 +48,8 @@ final class StoreKitService {
 
     /// Fired when a purchase enters Ask-to-Buy / SCA verification.
     /// Resolves later via `Transaction.updates` once parent approves. No userInfo.
+    /// A screen treats it as the end of its tap (#1183): a decline may never
+    /// arrive, so waiting for a terminal event leaves a dead button.
     static let purchasePendingNotification = Notification.Name("snoozepay.storekit.purchasePending")
 
     /// Terminal App Store cancellation. No credit, error, or userInfo.
@@ -83,6 +85,10 @@ final class StoreKitService {
     /// transaction came from outside that gate — an Ask-to-Buy approval or a
     /// restore that resolved after the storefront changed.
     static var foreignCurrencyFailureMessage: String { Localized.text("deposit.error.foreign_currency") }
+
+    /// What a top-up screen says on `purchasePendingNotification` (#1183): the
+    /// purchase waits for approval and its credit comes later, if at all.
+    static var purchasePendingMessage: String { Localized.text("deposit.pending.message") }
 
     /// The last successfully loaded catalogue (#1109). A failed reload keeps it.
     private(set) var catalogue = LoadedCatalogue.empty

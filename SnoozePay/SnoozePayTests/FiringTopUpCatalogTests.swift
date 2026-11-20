@@ -153,7 +153,6 @@ final class FiringTopUpCatalogTests: XCTestCase {
         let sheet = fixture.makeSheet()
         sheet.loadViewIfNeeded()
         try purchaseButton(sheet).sendActions(for: .touchUpInside)
-        fixture.post(StoreKitService.purchasePendingNotification)
         fixture.put(999, price: "0.49", code: "USD", display: "$0.49")
         fixture.refresh()
         let rows = descendants(sheet.view).compactMap { $0 as? FiringTopUpPresetRow }
@@ -192,7 +191,6 @@ final class FiringTopUpCatalogTests: XCTestCase {
         let sheet = fixture.makeSheet()
         sheet.loadViewIfNeeded()
         try purchaseButton(sheet).sendActions(for: .touchUpInside)
-        fixture.post(StoreKitService.purchasePendingNotification)
         fixture.refresh()
         XCTAssertFalse(try purchaseButton(sheet).isEnabled)
         fixture.post(StoreKitService.purchaseCancelledNotification)

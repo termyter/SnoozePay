@@ -47,6 +47,7 @@ final class DepositBottomSheetViewController: UIViewController {
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
     private var purchaseCancelledObserver: NSObjectProtocol?
+    private var purchasePendingObserver: NSObjectProtocol?
     private var productsLoadedObserver: NSObjectProtocol?
     private let offerProvider: ((String) -> TopUpOffer?)?
     /// Optional product dispatch keeps this real form testable without an App Store catalogue.
@@ -228,6 +229,7 @@ final class DepositBottomSheetViewController: UIViewController {
         if let token = purchaseCancelledObserver {
             notificationCenter.removeObserver(token)
         }
+        if let token = purchasePendingObserver { notificationCenter.removeObserver(token) }
     }
 
     // MARK: - Lifecycle
@@ -471,6 +473,16 @@ final class DepositBottomSheetViewController: UIViewController {
             guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
             self.endPurchaseInFlight()
         }
+        purchasePendingObserver = center.addObserver(
+            forName: StoreKitService.purchasePendingNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.handlePurchasePending() }
+    }
+
+    /// Ask to Buy / SCA ends this tap (#1183): a decline may never arrive. An
+    /// approval still lands on the completed observer above while the sheet is up.
+    private func handlePurchasePending() {
+        guard purchaseInFlight else { return }
+        handlePurchaseFailure(message: StoreKitService.purchasePendingMessage, title: nil)
     }
 
     @objc private func depositTapped() {
@@ -579,12 +591,15 @@ final class DepositBottomSheetViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private func handlePurchaseFailure(message: String?) {
+    /// `title: nil` is the pending notice, which is not a failure.
+    private func handlePurchaseFailure(
+        message: String?, title: String? = Localized.text("common.purchase_failed.title")
+    ) {
         guard successReceipt == nil else { return }
         endPurchaseInFlight()
 
         let alert = UIAlertController(
-            title: Localized.text("common.purchase_failed.title"),
+            title: title,
             message: message ?? Localized.text("common.purchase_failed.message"),
             preferredStyle: .alert
         )
