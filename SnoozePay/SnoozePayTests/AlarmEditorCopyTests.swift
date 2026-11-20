@@ -542,22 +542,24 @@ final class AlarmEditorCopyTests: XCTestCase {
     /// mono face.
     func testSnoozeSliderReadingKeepsItsNumberInTheHeadlineFace() throws {
         let cell = SnoozeSliderCell(style: .default, reuseIdentifier: nil)
+        // The default text size, whatever the simulator is set to (#1111).
+        cell.traitOverrides.preferredContentSizeCategory = .large
+        cell.updateTraitsIfNeeded()
         cell.configure(minutes: 7)
 
         let reading = try XCTUnwrap(
             Self.attributedStrings(in: cell.contentView).first { $0.string == "7 мин" },
             "the slider never rendered «7 мин»: \(Self.strings(in: cell.contentView))"
         )
-        XCTAssertEqual(
-            reading.attribute(.font, at: 0, effectiveRange: nil) as? UIFont,
-            AppTypography.moneyMd,
-            "the digit lost the mono headline face"
-        )
-        XCTAssertEqual(
-            reading.attribute(.font, at: reading.length - 1, effectiveRange: nil) as? UIFont,
-            AppTypography.h4,
-            "the unit lost its dimmed face"
-        )
+        // Face and size, not font identity: since #1111 the cell renders the
+        // Dynamic Type twins of these roles, which draw the same at `.large`
+        // but are distinct `UIFont` objects.
+        let digit = reading.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+        XCTAssertEqual(digit?.fontName, AppTypography.moneyMd.fontName, "the digit lost the mono headline face")
+        XCTAssertEqual(digit?.pointSize, AppTypography.moneyMd.pointSize, "the digit lost the mono headline face")
+        let unit = reading.attribute(.font, at: reading.length - 1, effectiveRange: nil) as? UIFont
+        XCTAssertEqual(unit?.fontName, AppTypography.h4.fontName, "the unit lost its dimmed face")
+        XCTAssertEqual(unit?.pointSize, AppTypography.h4.pointSize, "the unit lost its dimmed face")
 
         // Range bounds under the track read through the same key.
         XCTAssertTrue(Self.strings(in: cell.contentView).contains("1 мин"))

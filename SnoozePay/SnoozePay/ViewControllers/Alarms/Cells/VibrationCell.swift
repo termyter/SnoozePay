@@ -22,8 +22,12 @@ final class VibrationCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.vibration.title")
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.scaledBodyLg
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg1
+        // One word: never wrapped, and never the one squeezed by the switch.
+        label.numberOfLines = 1
+        label.setContentCompressionResistancePriority(.defaultHigh + 1, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -77,6 +81,11 @@ final class VibrationCell: UITableViewCell {
 
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: AppSpacing.sp3),
             titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            // Dynamic Type (#1111): a grown title stays clear of the switch
+            // and the card's edges; at the default size both hold with room
+            // to spare, so the 48pt row is unchanged.
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: toggle.leadingAnchor, constant: -AppSpacing.sp2),
+            titleLabel.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: AppSpacing.sp3),
 
             toggle.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor,

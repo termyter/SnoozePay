@@ -42,7 +42,8 @@ final class ThemeRowCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.text = Localized.text("create_alarm.theme.title")
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.scaledBodyLg
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg1
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -50,7 +51,8 @@ final class ThemeRowCell: UITableViewCell {
 
     private let valueLabel: UILabel = {
         let label = UILabel()
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
@@ -66,6 +68,11 @@ final class ThemeRowCell: UITableViewCell {
         return view
     }()
 
+    /// Shared with `SoundCell`: one line up to `.large`, stacked from XL (#1111).
+    private lazy var rowLayout = DisclosureRowLayout(
+        title: titleLabel, value: valueLabel, chevron: chevronView, in: contentView
+    )
+
     // MARK: - Init
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -74,6 +81,9 @@ final class ThemeRowCell: UITableViewCell {
         refreshThumbnailBorder()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: ThemeRowCell, _) in
             cell.refreshThumbnailBorder()
+        }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: ThemeRowCell, _) in
+            cell.rowLayout.apply(cell.traitCollection.preferredContentSizeCategory)
         }
     }
 
@@ -127,7 +137,6 @@ final class ThemeRowCell: UITableViewCell {
             thumbnailImageView.bottomAnchor.constraint(equalTo: thumbnail.bottomAnchor),
 
             titleLabel.leadingAnchor.constraint(equalTo: thumbnail.trailingAnchor, constant: AppSpacing.sp3),
-            titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             chevronView.trailingAnchor.constraint(
                 equalTo: contentView.trailingAnchor,
@@ -135,14 +144,9 @@ final class ThemeRowCell: UITableViewCell {
             ),
             chevronView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
-            valueLabel.trailingAnchor.constraint(equalTo: chevronView.leadingAnchor, constant: -AppSpacing.sp2),
-            valueLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            valueLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: AppSpacing.sp2
-            ),
-
             contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 48)
         ])
+        rowLayout.apply(traitCollection.preferredContentSizeCategory)
     }
 
     // MARK: - Configure
