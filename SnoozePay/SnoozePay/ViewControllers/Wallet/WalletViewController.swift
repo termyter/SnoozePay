@@ -21,6 +21,8 @@ final class WalletViewController: UIViewController {
 
     private let balanceService: BalanceService
     private let transactionRepository: TransactionRepository
+    private let alarmRepository: AlarmRepository
+    private let alarmDefaults: AlarmDefaults
 
     // MARK: - Subviews
 
@@ -56,9 +58,12 @@ final class WalletViewController: UIViewController {
 
     // MARK: - Init
 
-    init(balanceService: BalanceService = .shared, transactionRepository: TransactionRepository = .shared) {
+    init(balanceService: BalanceService = .shared, transactionRepository: TransactionRepository = .shared,
+         alarmRepository: AlarmRepository = .shared, alarmDefaults: AlarmDefaults = .shared) {
         self.balanceService = balanceService
         self.transactionRepository = transactionRepository
+        self.alarmRepository = alarmRepository
+        self.alarmDefaults = alarmDefaults
         let initialBalance = balanceService.balance
         let context = balanceService.priceContext
         balanceCard = SPBalanceCard(
@@ -71,7 +76,7 @@ final class WalletViewController: UIViewController {
             // `refresh()` then contradicted.
             hint: WalletHints.affordHint(
                 forBalance: initialBalance,
-                alarms: AlarmRepository.shared.fetchAll(),
+                alarms: alarmRepository.fetchAll(), defaults: alarmDefaults,
                 context: context
             )
         )
@@ -194,7 +199,7 @@ final class WalletViewController: UIViewController {
             contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
             contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
 
-            weeklyChart.heightAnchor.constraint(equalToConstant: 80)
+            weeklyChart.heightAnchor.constraint(greaterThanOrEqualToConstant: 80)  // taller only for 2× text
         ])
     }
 
@@ -242,7 +247,7 @@ final class WalletViewController: UIViewController {
         let context = balanceService.priceContext
         let hint = WalletHints.affordHint(
             forBalance: balance,
-            alarms: AlarmRepository.shared.fetchAll(),
+            alarms: alarmRepository.fetchAll(), defaults: alarmDefaults,
             context: context
         )
         // The figure uses `displayCurrency` (a pristine wallet's zero in the
@@ -267,7 +272,7 @@ final class WalletViewController: UIViewController {
             // Checked read collapsed with `try?` (#271) — see the sibling site
             // in `WalletTransactionHistoryViewController`: an unreadable alarm
             // store degrades the row's caption, it does not fake an empty list.
-            alarmLookup: { try? AlarmRepository.shared.fetchChecked(id: $0) }
+            alarmLookup: { try? alarmRepository.fetchChecked(id: $0) }
         )
         txPreviewHost.addArrangedSubview(makeTxPreviewCard(items: items))
     }
