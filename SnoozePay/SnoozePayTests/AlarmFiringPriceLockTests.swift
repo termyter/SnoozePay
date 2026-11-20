@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import SnoozePay
 
@@ -226,7 +227,8 @@ final class AlarmFiringPriceLockTests: XCTestCase {
         XCTAssertTrue(scaleStore.record(usdScale))
         fund(9.99, in: usd)
 
-        XCTAssertTrue(model.isLockedPriceStranded)
+        // A readable ledger: the wallet's currency is the cause (#1184).
+        assertStrandingLogged(model, cause: "wallet in USD")
         XCTAssertFalse(model.isProgressionAvailable)
         XCTAssertFalse(model.canSnooze)
         XCTAssertTrue(model.currentPenalty.isNaN)
@@ -236,5 +238,40 @@ final class AlarmFiringPriceLockTests: XCTestCase {
 
         guard case .success = model.dismiss() else { return XCTFail("Stop must still work") }
         XCTAssertEqual(alarmRepository.fetchOrFail(id: alarm.id)?.enabled, false)
+    }
+
+    /// Both causes at once: the wallet froze in dollars mid-ring, then the
+    /// ledger broke. The line names the ledger, as the purchase gate does —
+    /// the stale latch would let a currency-first check say "wallet in USD".
+    func testWalletFrozenThenLedgerBroken_strandingNamesTheLedgerFirst() {
+        let model = makeViewModel(Alarm(penaltyAmount: 50))
+        XCTAssertEqual(model.lockedPriceContext, .scale(.rouble))
+        XCTAssertTrue(scaleStore.record(usdScale))
+        fund(9.99, in: usd)
+
+        defaults.set(Data("unreadable ledger".utf8), forKey: "stored_transactions")
+
+        XCTAssertEqual(wallet.storedWalletCurrency, usd, "Frozen as well as unreadable")
+        assertStrandingLogged(model, cause: "ledger unreadable")
+        XCTAssertFalse(model.isProgressionAvailable)
+    }
+
+    /// The first stranded read logs one UI error naming `cause`; later reads
+    /// in the same ring log nothing.
+    private func assertStrandingLogged(
+        _ model: AlarmFiringViewModel, cause: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        var lines: [(category: AppLogCategory, level: OSLogType, message: String)] = []
+        AppLogger.withTestSink({ lines.append(($0, $1, $2)) }, perform: {
+            XCTAssertTrue(model.isLockedPriceStranded, file: file, line: line)
+            XCTAssertTrue(model.isLockedPriceStranded, "Asked twice, logged once", file: file, line: line)
+        })
+        lines = lines.filter { $0.message.hasPrefix("firing: price locked") }
+        let handle = String(model.alarm.id.uuidString.prefix(8))
+        XCTAssertEqual(lines.map(\.category), [.ui], file: file, line: line)
+        XCTAssertEqual(lines.map(\.level), [.error], file: file, line: line)
+        XCTAssertEqual(lines.first?.message,
+                       "firing: price locked in RUB, \(cause) alarm=\(handle) — snooze refused, no charge",
+                       file: file, line: line)
     }
 }

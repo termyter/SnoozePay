@@ -17,8 +17,9 @@ import os
 ///   top-up path stays reachable. Never a debit of a number denominated in
 ///   another currency.
 /// - The price is in a currency the wallet can no longer accept (it froze in
-///   another one mid-ring) → "progression unavailable" too: no top-up could
-///   ever make the locked price payable, so none is offered.
+///   another one mid-ring, or its ledger stopped reading) → "progression
+///   unavailable" too: no top-up could ever make the locked price payable, so
+///   none is offered.
 ///
 /// Rouble wallets resolve `.amount` to the amount itself and the ladder in
 /// `Decimal`, so charges and sufficiency equal `alarm.penalty(forSnoozeCount:)`.
@@ -110,21 +111,26 @@ extension AlarmFiringViewModel {
 
     /// The locked price is in a currency the wallet neither holds nor accepts
     /// any more: it froze in another currency mid-ring (a purchase after the
-    /// catalogue loaded). Topping up cannot fix that, so the ring refuses
-    /// instead of steering the user into purchases. Logged once per ring.
+    /// catalogue loaded), or it stopped being pristine without freezing —
+    /// most often because the ledger stopped reading. Topping up cannot fix
+    /// either, so the ring refuses instead of steering the user into
+    /// purchases. Logged once per ring with the cause the purchase gate names:
+    /// the unreadable ledger first, else the wallet's currency, in the tap
+    /// line's words — "wallet in", since not every such wallet froze (#1184).
     var isLockedPriceStranded: Bool {
         guard lockedPriceContext != nil, let price = price(forSnoozeCount: snoozeCount + 1),
               price.currency != walletCurrency,
               !balanceService.acceptsPurchase(in: price.currency) else { return false }
         if !didLogStrandedPrice {
             didLogStrandedPrice = true
-            let priceCode = price.currency.code, walletCode = walletCurrency.code, alarmID = alarm.id
-            AppLogger.ui.error(
-                """
-                firing: price locked in \(priceCode, privacy: .public), wallet frozen in \
-                \(walletCode, privacy: .public) alarm=\(alarmID, privacy: .private) — snooze refused, no charge
-                """
-            )
+            let ledgerBroken = balanceService.prePurchaseRefusal(in: price.currency) == .ledgerUnreadable
+            let cause = ledgerBroken ? "ledger unreadable" : "wallet in \(walletCurrency.code)"
+            // `emit` writes public text, so the 8-character handle, not the id.
+            let handle = String(alarm.id.uuidString.prefix(8))
+            AppLogger.emit(.ui, .error, """
+                firing: price locked in \(price.currency.code), \(cause) \
+                alarm=\(handle) — snooze refused, no charge
+                """)
         }
         return true
     }
