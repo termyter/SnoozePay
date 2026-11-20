@@ -110,12 +110,13 @@ extension AlarmFiringViewModel {
     }
 
     /// The locked price is in a currency the wallet neither holds nor accepts
-    /// any more. Two causes: the wallet froze in another currency mid-ring (a
-    /// purchase after the catalogue loaded), or the ledger stopped reading — a
-    /// pristine wallet is then no longer pristine, though nothing froze it.
-    /// Topping up cannot fix either, so the ring refuses instead of steering
-    /// the user into purchases. Logged once per ring, naming the cause the way
-    /// the purchase gate does: an unreadable ledger first (#1184).
+    /// any more: it froze in another currency mid-ring (a purchase after the
+    /// catalogue loaded), or it stopped being pristine without freezing —
+    /// most often because the ledger stopped reading. Topping up cannot fix
+    /// either, so the ring refuses instead of steering the user into
+    /// purchases. Logged once per ring with the cause the purchase gate names:
+    /// the unreadable ledger first, else the wallet's currency, in the tap
+    /// line's words — "wallet in", since not every such wallet froze (#1184).
     var isLockedPriceStranded: Bool {
         guard lockedPriceContext != nil, let price = price(forSnoozeCount: snoozeCount + 1),
               price.currency != walletCurrency,
@@ -123,7 +124,7 @@ extension AlarmFiringViewModel {
         if !didLogStrandedPrice {
             didLogStrandedPrice = true
             let ledgerBroken = balanceService.prePurchaseRefusal(in: price.currency) == .ledgerUnreadable
-            let cause = ledgerBroken ? "ledger unreadable" : "wallet frozen in \(walletCurrency.code)"
+            let cause = ledgerBroken ? "ledger unreadable" : "wallet in \(walletCurrency.code)"
             // `emit` writes public text, so the 8-character handle, not the id.
             let handle = String(alarm.id.uuidString.prefix(8))
             AppLogger.emit(.ui, .error, """
