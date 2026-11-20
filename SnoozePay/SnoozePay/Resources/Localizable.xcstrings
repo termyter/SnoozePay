@@ -3710,19 +3710,19 @@
       }
     },
     "deposit.error.ledger_unreadable" : {
-      "comment" : "Top-up refused before the purchase sheet opens: the balance ledger cannot be read, so a purchase would be charged and never credited (#1182). Nothing was charged, which is why this is not deposit.error.credit_failed — that one follows a paid purchase.",
+      "comment" : "Top-up refused before Apple's payment sheet is shown: the balance ledger cannot be read, so a purchase would be charged and left uncredited (#1182). This attempt charged nothing, which is why this is not deposit.error.credit_failed — that one follows a paid purchase. Scoped to this purchase: an earlier paid purchase may still be waiting to be credited.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Top-ups are paused: your balance data couldn’t be read. You haven’t been charged. Contact support."
+            "value" : "Top-ups are paused: your balance data couldn’t be read. You weren’t charged for this purchase. Contact support."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Пополнение приостановлено: не удалось прочитать данные баланса. Деньги не списаны. Свяжитесь с поддержкой."
+            "value" : "Пополнение приостановлено: не удалось прочитать данные баланса. За эту покупку деньги не списаны. Свяжитесь с поддержкой."
           }
         }
       }

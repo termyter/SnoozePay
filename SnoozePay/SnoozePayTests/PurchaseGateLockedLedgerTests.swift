@@ -65,9 +65,10 @@ final class PurchaseGateLockedLedgerTests: XCTestCase {
                        "The post-charge copy is unchanged")
 
         let copy = [
-            ("ru", "Пополнение приостановлено: не удалось прочитать данные баланса. Деньги не списаны. "
-                + "Свяжитесь с поддержкой."),
-            ("en", "Top-ups are paused: your balance data couldn’t be read. You haven’t been charged. Contact support.")
+            ("ru", "Пополнение приостановлено: не удалось прочитать данные баланса. "
+                + "За эту покупку деньги не списаны. Свяжитесь с поддержкой."),
+            ("en", "Top-ups are paused: your balance data couldn’t be read. "
+                + "You weren’t charged for this purchase. Contact support.")
         ]
         for (language, expected) in copy {
             let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"), language)
