@@ -36,7 +36,8 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
     // MARK: - Main's geometry
 
     /// One measured view: a label by its text, or «value» (the trailing name
-    /// of the sound / theme row), «chain», «switch» or «slider».
+    /// of the sound / theme row), «icon» (its leading icon or thumbnail),
+    /// «chain», «switch» or «slider».
     private struct Spot {
         let row: IndexPath
         let text: String
@@ -50,8 +51,9 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
     }
 
     /// Measured on main (65cd789e), before this change, with `mount` at
-    /// `.large`: a cold editor in a real window. Frames are in each cell's
-    /// content view, in pixels of a 3× screen (`px(53)` = 17⅔pt).
+    /// `.large`: a cold editor in a real window, on an iPhone 17 simulator
+    /// with iOS 27.0. Frames are in each cell's content view, in pixels of
+    /// that 3× screen (`px(53)` = 17⅔pt); `mount` checks the scale.
     private static func mainFrames(on screen: CGFloat) -> [Spot] {
         func px(_ pixels: CGFloat) -> CGFloat { pixels / 3 }
         let wide = screen == 402
@@ -75,6 +77,9 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
             Spot(snooze, "slider", 20, px(250), 295, 34)
         ]
         return snoozeFrames + [
+            // A symbol's frame is not its 24×24 alignment rect.
+            Spot(sound, "icon", 20, px(42), 24, px(64)),
+            Spot(theme, "icon", 20, px(32), 28, 28),
             Spot(sound, "Звук", 56, 13, px(113), px(70)),
             Spot(sound, "value", 246 + shift, px(47), px(154), 18),
             Spot(theme, "Тема", 60, 13, px(121), px(70)),
@@ -141,21 +146,59 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
     }
 
     /// The window's category changes under a running editor: every row grows
-    /// and stacks, and coming back restores main's geometry to the third of a
-    /// point.
+    /// and stacks, survives the settings rows being reloaded, and coming back
+    /// restores main's geometry to the third of a point.
+    ///
+    /// The table hands out other cell instances after each change (measured:
+    /// none of the three snooze cells is the same object), so a cell's own
+    /// way back to `.large` is on trial in the per-row tests below.
     func testALiveChangeToAX5AndBackRestoresMainsGeometry() throws {
         for screen in Self.screens {
             let sut = mount(width: screen, category: .large)
-            let window = try XCTUnwrap(sut.view.window)
-            window.traitOverrides.preferredContentSizeCategory = Self.ax5
-            window.layoutIfNeeded()
-            sut.tableView.layoutIfNeeded()
+            try setCategory(Self.ax5, of: sut)
             try assertGrownEditor(sut, on: screen, "live AX5, \(screen)")
 
-            window.traitOverrides.preferredContentSizeCategory = .large
-            window.layoutIfNeeded()
+            // The path back from the sound and theme pickers: `viewWillAppear`
+            // reloads the settings section, so its rows are dequeued afresh.
+            sut.tableView.reloadSections(
+                IndexSet([CreateAlarmViewController.Section.settings.rawValue]), with: .none
+            )
             sut.tableView.layoutIfNeeded()
+            try assertGrownEditor(sut, on: screen, "reloaded at AX5, \(screen)")
+
+            try setCategory(.large, of: sut)
             try assertMainGeometry(in: sut, on: screen, "back to .large, \(screen)")
+        }
+    }
+
+    /// Every run of every label in the five rows, read off the hosted editor:
+    /// at AX5 it is larger than at `.large` and at most twice that — the
+    /// reading's «мин», the chain's last sum, the hint, the bounds and the
+    /// subtitle included — and the chain's last sum leads its steps at both.
+    func testEveryTextRunGrowsAtAX5AndAtMostDoubles() throws {
+        for screen in Self.screens {
+            let sut = mount(width: screen, category: .large)
+            let atLarge = try runSizes(in: sut)
+            try setCategory(Self.ax5, of: sut)
+            let atAX5 = try runSizes(in: sut)
+            XCTAssertEqual(Set(atAX5.keys), Set(atLarge.keys), "\(screen): the labels changed")
+            // Caption, hint, reading and two bounds; two names and two
+            // titles; «Вибрация»; title, subtitle and chain.
+            XCTAssertEqual(atLarge.count, 13, "\(screen): \(atLarge.keys.sorted())")
+            for (key, before) in atLarge {
+                let after = atAX5[key] ?? []
+                XCTAssertEqual(after.count, before.count, "\(screen): «\(key)» changed its runs")
+                for (run, (small, grown)) in zip(before, after).enumerated() {
+                    let name = "\(screen): «\(key)» run \(run), \(small) → \(grown)"
+                    XCTAssertGreaterThan(grown, small, "\(name) did not grow")
+                    XCTAssertLessThanOrEqual(grown, small * AppTypography.maximumScale + 0.01, "\(name) over 2×")
+                }
+            }
+            let chain = try XCTUnwrap(atLarge.keys.first { $0.contains(" → ") }, "no chain")
+            for runs in [atLarge[chain] ?? [], atAX5[chain] ?? []] {
+                XCTAssertGreaterThan(runs.count, 1, "\(screen): the chain is one run")
+                XCTAssertGreaterThan(runs.last ?? 0, runs.first ?? 0, "\(screen): the last sum lost its lead")
+            }
         }
     }
 
@@ -255,6 +298,9 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(reading.frame.minY, hint.frame.maxY, "\(name): reading beside the hint")
                 XCTAssertGreaterThanOrEqual(slider.frame.minY, reading.frame.maxY, "\(name): reading over the track")
                 XCTAssertEqual(reading.frame.minX, AppSpacing.cardHorizontalPadding, accuracy: 0.01, name)
+                // The frame spans the card either way; only the alignment
+                // says where «15 мин» is drawn in it.
+                XCTAssertEqual(reading.textAlignment, .natural, "\(name): the reading is drawn at the right edge")
                 for text in [caption, hint] {
                     XCTAssertLessThanOrEqual(
                         text.frame.maxX, row.contentView.bounds.maxX - AppSpacing.cardHorizontalPadding + 0.5, name
@@ -264,6 +310,14 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
                 XCTAssertGreaterThan(digit.pointSize, AppTypography.moneyMd.pointSize, "\(name): number not grown")
                 XCTAssertGreaterThan(try attributedFont(of: caption).pointSize, AppTypography.caps.pointSize, name)
                 assertNothingClipped(in: row, atLeast: 5)
+
+                // The same cell back at `.large`: the hosted editor's table
+                // may hand out another instance after a category change, so
+                // only here is the restore itself on trial.
+                override(row, to: .large)
+                layOut(row, width: Self.cardWidth(screen))
+                XCTAssertEqual(reading.textAlignment, .right, "\(name) → .large: the reading lost its right alignment")
+                XCTAssertLessThan(reading.frame.minY, hint.frame.maxY, "\(name) → .large: the reading stayed under")
             }
         }
     }
@@ -309,19 +363,30 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
         }
     }
 
-    /// Flipping the switch re-renders the chain; it keeps the grown size.
-    func testTogglingTheProgressiveCardAtAX5KeepsTheScaledChain() throws {
+    /// Flipping the switch either way repaints the chain — the first step
+    /// goes from warn to the card's meta ink and back — and the repainted
+    /// chain keeps the grown size.
+    func testTogglingTheProgressiveCardAtAX5RepaintsTheScaledChain() throws {
         let row = ProgressiveScaleCell(style: .default, reuseIdentifier: nil)
         row.configure(isOn: true, chain: [50, 100, 200, 400], currency: .rub, accessibilityChain: "")
         override(row, to: Self.ax5)
         layOut(row, width: 335)
+        let traits = row.traitCollection
+        let firstStepInk = { (label: UILabel) in
+            (label.attributedText?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor)?
+                .resolvedColor(with: traits)
+        }
+        XCTAssertEqual(try firstStepInk(chainLabel(in: row)), AppColors.warn400.resolvedColor(with: traits))
         let toggle = try XCTUnwrap(descendants(of: SPSwitch.self, in: row.contentView).first)
-        toggle.isOn = false
-        toggle.sendActions(for: .valueChanged)
-        let chain = try chainLabel(in: row)
-        let step = try XCTUnwrap(chain.attributedText?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
-        XCTAssertGreaterThan(step.pointSize, 14)
-        XCTAssertLessThanOrEqual(step.pointSize, 14 * AppTypography.maximumScale)
+        for (isOn, ink) in [(false, AppColors.fg3), (true, AppColors.warn400)] {
+            toggle.isOn = isOn
+            toggle.sendActions(for: .valueChanged)
+            let chain = try chainLabel(in: row)
+            XCTAssertEqual(firstStepInk(chain), ink.resolvedColor(with: traits), "on: \(isOn): not repainted")
+            let step = try XCTUnwrap(chain.attributedText?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+            XCTAssertGreaterThan(step.pointSize, 14, "on: \(isOn)")
+            XCTAssertLessThanOrEqual(step.pointSize, 14 * AppTypography.maximumScale, "on: \(isOn)")
+        }
     }
 
     // MARK: - Assertions
@@ -343,6 +408,10 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
                 )
             }
         }
+        // The 56pt frame is wider than «9 мин»: a reading left aligned would
+        // move its glyphs without moving the frame.
+        let reading = try label("9 мин", in: hostedCell(Self.snooze, of: sut))
+        XCTAssertEqual(reading.textAlignment, .right, "\(name): the reading lost its right alignment")
     }
 
     private func assertGrownEditor(_ sut: CreateAlarmViewController, on screen: CGFloat, _ name: String) throws {
@@ -372,6 +441,7 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
         let hint = try label(Localized.text("create_alarm.snooze.hint"), in: snoozeRow)
         let reading = try label("9 мин", in: snoozeRow)
         XCTAssertGreaterThanOrEqual(reading.frame.minY, hint.frame.maxY, "\(name): the reading beside the hint")
+        XCTAssertEqual(reading.textAlignment, .natural, "\(name): the reading is drawn at the right edge")
     }
 
     private func assertStacked(
@@ -396,7 +466,23 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
         )
         XCTAssertLessThanOrEqual(value.frame.maxY, row.contentView.bounds.maxY - AppSpacing.sp3 + 0.5, name)
         XCTAssertEqual(title.numberOfLines, 1, name)
+        // As in iOS Settings: the icon or thumbnail stays on the title's
+        // line, not in the middle of a row now two lines tall. Measured by
+        // its alignment rect — a symbol's frame is not centred on it.
+        let icon = try XCTUnwrap(row.contentView.subviews.min { $0.frame.minX < $1.frame.minX })
+        let iconRect = { icon.alignmentRect(forFrame: icon.frame) }
+        XCTAssertEqual(iconRect().midY, title.frame.midY, accuracy: 0.5, "\(name): the icon left the title's line")
+        XCTAssertGreaterThanOrEqual(iconRect().minY, 0, "\(name): the icon runs off the row")
         assertNothingClipped(in: row, atLeast: 2)
+
+        // The same cell back at `.large` (the hosted table hands out other
+        // instances after a category change): one 48pt line again.
+        override(row, to: .large)
+        layOut(row, width: Self.cardWidth(screen))
+        XCTAssertEqual(fitted(row.contentView, width: Self.cardWidth(screen)), 48, accuracy: 0.01, "\(name) → .large")
+        XCTAssertEqual(value.numberOfLines, 1, "\(name) → .large")
+        XCTAssertEqual(value.frame.midY, title.frame.midY, accuracy: 0.5, "\(name) → .large: the name stayed under")
+        XCTAssertEqual(iconRect().midY, row.contentView.bounds.midY, accuracy: 0.5, "\(name) → .large: the icon")
     }
 
     private func assertStackedProgressiveCard(
@@ -423,10 +509,32 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
         XCTAssertLessThanOrEqual(frame(toggle).maxY, row.contentView.bounds.maxY - AppSpacing.sp5 + 0.5, name)
         XCTAssertEqual(chain.numberOfLines, 0, name)
         XCTAssertFalse(chain.adjustsFontSizeToFitWidth, "\(name): the chain shrinks instead of wrapping")
+        // Groups split by U+00A0 and the sign by U+202F, both no-break: the
+        // chain may wrap only at the plain spaces around its arrows.
+        let text = chain.attributedText?.string ?? ""
+        XCTAssertEqual(
+            text, "1\u{00A0}000 → 2\u{00A0}000 → 4\u{00A0}000 → 8\u{00A0}000\u{202F}₽",
+            "\(name): \(text.unicodeScalars.map { String($0.value, radix: 16) })"
+        )
         let step = try XCTUnwrap(chain.attributedText?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
         XCTAssertGreaterThan(step.pointSize, 14, "\(name): the chain did not grow")
+        if category == Self.ax5 && screen == 375 {
+            XCTAssertGreaterThan(chain.bounds.height, step.lineHeight * 1.5, "\(name): the chain did not wrap")
+        }
         XCTAssertGreaterThan(try attributedFont(of: title).pointSize, AppTypography.h4.pointSize, name)
         assertNothingClipped(in: row, atLeast: 3)
+
+        // The same cell back at `.large`: the switch beside the column, the
+        // flame beside the title, the chain one shrinking line.
+        override(row, to: .large)
+        layOut(row, width: width)
+        let back = "\(name) → .large"
+        XCTAssertEqual(frame(toggle).minY, AppSpacing.sp5, accuracy: 0.01, "\(back): the switch stayed under")
+        // Main's x (254 / 281): the switch's frame overhangs the padding by 2pt.
+        XCTAssertEqual(frame(toggle).minX, width - 81, accuracy: 0.01, back)
+        XCTAssertLessThanOrEqual(frame(flame).maxX, frame(title).minX, "\(back): the flame stayed above")
+        XCTAssertEqual(chain.numberOfLines, 1, back)
+        XCTAssertTrue(chain.adjustsFontSizeToFitWidth, back)
     }
 
     private func assertNothingClipped(
@@ -471,26 +579,59 @@ final class CreateAlarmDynamicTypeTests: XCTestCase {
         if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
             window.windowScene = scene
         }
-        window.traitOverrides.preferredContentSizeCategory = category
+        // `mainFrames` is in thirds of a point, measured on a 3× iPhone 17
+        // simulator (iOS 27.0); a 2× device rounds to other pixels.
+        XCTAssertEqual(window.windowScene?.screen.scale, 3, "pinned in 3x pixels")
+        override(window, to: category)
         window.rootViewController = sut
         window.isHidden = false
         hostWindows.append(window)
         window.layoutIfNeeded()
         sut.tableView.layoutIfNeeded()
         XCTAssertEqual(sut.view.bounds.width, width, "the window was not laid out at \(width)")
+        XCTAssertEqual(sut.traitCollection.preferredContentSizeCategory, category, "the editor missed the override")
         return sut
+    }
+
+    /// The window's category changes under the running editor.
+    private func setCategory(_ category: UIContentSizeCategory, of sut: CreateAlarmViewController) throws {
+        let window = try XCTUnwrap(sut.view.window)
+        override(window, to: category)
+        window.layoutIfNeeded()
+        sut.tableView.layoutIfNeeded()
+        XCTAssertEqual(sut.traitCollection.preferredContentSizeCategory, category, "the editor missed the change")
+    }
+
+    /// The point size of every font run of every visible label in the five
+    /// rows, keyed by row and text.
+    private func runSizes(in sut: CreateAlarmViewController) throws -> [String: [CGFloat]] {
+        var sizes: [String: [CGFloat]] = [:]
+        for row in [Self.snooze, Self.sound, Self.theme, Self.vibration, Self.progressive] {
+            let cell = try hostedCell(row, of: sut)
+            for label in descendants(of: UILabel.self, in: cell.contentView) {
+                guard !label.isHidden, let text = label.attributedText, text.length > 0 else { continue }
+                var runs: [CGFloat] = []
+                text.enumerateAttribute(.font, in: NSRange(location: 0, length: text.length)) { font, _, _ in
+                    runs.append(((font as? UIFont) ?? label.font).pointSize)
+                }
+                sizes["\(row.section).\(row.row) \(text.string)"] = runs
+            }
+        }
+        return sizes
     }
 
     private func hostedCell(_ row: IndexPath, of sut: CreateAlarmViewController) throws -> UITableViewCell {
         try XCTUnwrap(sut.tableView.cellForRow(at: row), "row \(row) is not on screen")
     }
 
-    /// A label by its text, the sound / theme row's trailing name («value»),
-    /// the progressive chain, or the row's switch or slider.
+    /// A label by its text, the sound / theme row's trailing name («value»)
+    /// or leading icon / thumbnail («icon»), the progressive chain, or the
+    /// row's switch or slider.
     private func spot(_ text: String, in cell: UITableViewCell) throws -> UIView {
         switch text {
         case "switch": return try XCTUnwrap(descendants(of: SPSwitch.self, in: cell.contentView).first)
         case "slider": return try XCTUnwrap(descendants(of: UISlider.self, in: cell.contentView).first)
+        case "icon": return try XCTUnwrap(cell.contentView.subviews.min { $0.frame.minX < $1.frame.minX })
         case "chain":
             let chain = try chainLabel(in: cell)
             XCTAssertEqual(chain.attributedText?.string, "50 → 100 → 200 → 400\u{202F}₽")

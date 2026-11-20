@@ -198,6 +198,7 @@ final class AlarmEditorCopyTests: XCTestCase {
         "FiringTopUpPresetRow.swift",
         // No catalogue keys today; listed so growing one goes red here first.
         "Cells/AlarmThemeTileCell.swift",
+        "Cells/DisclosureRowLayout.swift",
         "Cells/SoundPickerRowCell.swift"
     ]
 

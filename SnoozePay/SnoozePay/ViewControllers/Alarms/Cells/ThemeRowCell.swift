@@ -70,7 +70,7 @@ final class ThemeRowCell: UITableViewCell {
 
     /// Shared with `SoundCell`: one line up to `.large`, stacked from XL (#1111).
     private lazy var rowLayout = DisclosureRowLayout(
-        title: titleLabel, value: valueLabel, chevron: chevronView, in: contentView
+        icon: thumbnail, title: titleLabel, value: valueLabel, chevron: chevronView, in: contentView
     )
 
     // MARK: - Init
@@ -127,7 +127,6 @@ final class ThemeRowCell: UITableViewCell {
                 equalTo: contentView.leadingAnchor,
                 constant: AppSpacing.cardHorizontalPadding
             ),
-            thumbnail.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             thumbnail.widthAnchor.constraint(equalToConstant: 28),
             thumbnail.heightAnchor.constraint(equalToConstant: 28),
 
