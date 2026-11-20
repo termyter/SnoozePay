@@ -307,7 +307,7 @@ final class StoreKitService {
         recordPriceScale(from: products)
         do {
             let result = try await product.purchase()
-            try await handlePurchaseResult(result)
+            try await handlePurchaseResult(result, productID: product.id)
         } catch {
             AppLogger.storeKit.error(
                 "purchase failed: \(String(describing: error), privacy: .public)"
@@ -318,7 +318,8 @@ final class StoreKitService {
 
     /// Separate result dispatch lets tests exercise real terminal/nonterminal branches
     /// without constructing an App Store product. Verification and credit are unchanged.
-    func handlePurchaseResult(_ result: Product.PurchaseResult) async throws {
+    /// `productID` only labels the pending log line.
+    func handlePurchaseResult(_ result: Product.PurchaseResult, productID: String? = nil) async throws {
         switch result {
         case .success(let verification):
             let transaction = try checkVerified(verification)
@@ -331,6 +332,14 @@ final class StoreKitService {
 
         case .pending:
             // Ask-to-Buy or SCA — resolved later via Transaction.updates listener.
+            // The screens end their tap here and a decline may never come back,
+            // so this line is the only trace of the wait (#1183).
+            let pendingID = productID ?? "unknown"
+            AppLogger.emit(
+                .storeKit, .default,
+                "purchase pending (Ask to Buy / SCA) — awaiting Transaction.updates; "
+                    + "productID=\(pendingID) feedbackSubscribers=\(purchaseFeedbackSubscribers)"
+            )
             postPurchasePending()
 
         @unknown default:

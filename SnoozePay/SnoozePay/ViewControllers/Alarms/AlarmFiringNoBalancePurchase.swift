@@ -75,7 +75,7 @@ final class AlarmFiringNoBalancePurchase {
         balanceToken = center.addObserver(
             forName: BalanceService.balanceChangedNotification, object: nil, queue: .main
         ) { [weak controller] _ in
-            // A balance change is not a StoreKit terminal result (Ask to Buy may still be pending).
+            // A balance change does not end this tap; only StoreKit's result for it does.
             controller?.updateUI()
         }
         catalogToken = center.addObserver(

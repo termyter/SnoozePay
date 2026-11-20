@@ -286,6 +286,7 @@ extension AlarmFiringViewController {
     func presentNoBalancePurchasePendingAlert() {
         let alert = UIAlertController(title: nil, message: StoreKitService.purchasePendingMessage,
                                       preferredStyle: .alert)
+        alert.view.accessibilityIdentifier = "purchase.pendingNotice"
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }

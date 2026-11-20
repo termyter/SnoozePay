@@ -115,6 +115,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         fixture.post(StoreKitService.purchaseFailedNotification)
         fixture.post(StoreKitService.purchaseCompletedNotification)
         fixture.post(StoreKitService.purchaseCancelledNotification)
+        fixture.post(StoreKitService.purchasePendingNotification)
         XCTAssertTrue(controller.alerts.isEmpty)
         XCTAssertEqual(fixture.calls.ends, 1)
         XCTAssertEqual(fixture.center.removals, 4)
@@ -137,6 +138,7 @@ final class FiringDirectPurchaseTerminalTests: XCTestCase {
         XCTAssertTrue(controller.chooseAmountLink?.isEnabled == true)
         XCTAssertEqual(controller.alerts.map(\.message), [StoreKitService.purchasePendingMessage])
         XCTAssertNil(controller.alerts.first?.title, "Pending is not a purchase failure")
+        XCTAssertEqual(controller.alerts.first?.view.accessibilityIdentifier, "purchase.pendingNotice")
         XCTAssertEqual(fixture.calls.ends, 1)
         XCTAssertEqual(fixture.center.removals, 4)
 

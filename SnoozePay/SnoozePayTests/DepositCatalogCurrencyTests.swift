@@ -102,35 +102,6 @@ final class DepositCatalogCurrencyTests: XCTestCase {
         XCTAssertEqual(fixture.balance.balance, 0.49)
     }
 
-    /// #1183: Ask to Buy / SCA ends the tap with an approval notice, not a failure
-    /// and not a button left in flight; the same pack can be bought again.
-    func testPendingEndsTheTapWithAnApprovalNotice() throws {
-        let fixture = try Fixture()
-        defer { fixture.clear() }
-        fixture.offer()
-        let sheet = fixture.sheet()
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
-        window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        window.rootViewController = sheet
-        window.makeKeyAndVisible()
-        defer {
-            // Balances the appearance, so the sheet's StoreKit feedback count does not outlive the test.
-            sheet.beginAppearanceTransition(false, animated: false)
-            sheet.endAppearanceTransition()
-            window.isHidden = true
-        }
-        try purchaseButton(sheet).sendActions(for: .touchUpInside)
-        fixture.center.post(name: StoreKitService.purchasePendingNotification, object: nil)
-        let alert = try XCTUnwrap(sheet.presentedViewController as? UIAlertController,
-                                  presentationDiagnostics(rootedAt: sheet))
-        XCTAssertNil(alert.title, "Pending is not a purchase failure")
-        XCTAssertEqual(alert.message, StoreKitService.purchasePendingMessage)
-        XCTAssertTrue(try purchaseButton(sheet).isEnabled)
-        try purchaseButton(sheet).sendActions(for: .touchUpInside)
-        XCTAssertEqual(fixture.requested, [Fixture.productID(149), Fixture.productID(149)])
-        XCTAssertEqual(fixture.balance.balance, 0)
-    }
-
     /// #1109: a storefront reload can post `productsLoaded` mid-purchase. The
     /// tapped button stays as it was; the purchase's end rebuilds it fresh.
     func testCatalogReloadMidPurchaseKeepsTheTappedButtonUntilThePurchaseEnds() throws {

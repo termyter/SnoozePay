@@ -482,7 +482,8 @@ final class DepositBottomSheetViewController: UIViewController {
     /// approval still lands on the completed observer above while the sheet is up.
     private func handlePurchasePending() {
         guard purchaseInFlight else { return }
-        handlePurchaseFailure(message: StoreKitService.purchasePendingMessage, title: nil)
+        handlePurchaseFailure(message: StoreKitService.purchasePendingMessage, title: nil,
+                              noticeID: "purchase.pendingNotice")
     }
 
     @objc private func depositTapped() {
@@ -567,8 +568,11 @@ final class DepositBottomSheetViewController: UIViewController {
             self.successContainer.alpha = 1
         }
 
+        // Through the presenter (#1189): `dismiss` on a sheet that still shows
+        // the pending notice or a failure alert closes only that alert.
         scheduleSuccessDismissal(2) { [weak self] in
-            self?.dismiss(animated: true)
+            guard let self else { return }
+            (self.presentingViewController ?? self).dismiss(animated: true)
         }
     }
 
@@ -593,7 +597,7 @@ final class DepositBottomSheetViewController: UIViewController {
 
     /// `title: nil` is the pending notice, which is not a failure.
     private func handlePurchaseFailure(
-        message: String?, title: String? = Localized.text("common.purchase_failed.title")
+        message: String?, title: String? = Localized.text("common.purchase_failed.title"), noticeID: String? = nil
     ) {
         guard successReceipt == nil else { return }
         endPurchaseInFlight()
@@ -603,6 +607,7 @@ final class DepositBottomSheetViewController: UIViewController {
             message: message ?? Localized.text("common.purchase_failed.message"),
             preferredStyle: .alert
         )
+        if let noticeID { alert.view.accessibilityIdentifier = noticeID }
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
         present(alert, animated: true)
     }
