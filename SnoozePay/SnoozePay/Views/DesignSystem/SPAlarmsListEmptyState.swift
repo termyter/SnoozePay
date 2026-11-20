@@ -58,16 +58,7 @@ final class SPAlarmsListEmptyState: UIView {
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        // h2 24pt bold with −0.01em tracking per
-        // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:395-396` contains "Ни одного будильника".
-        label.attributedText = NSAttributedString(
-            string: Localized.text("alarms.empty.title"),
-            attributes: [
-                .font: AppTypography.h2,
-                .kern: AppTypography.h2Kerning,
-                .foregroundColor: AppColors.fg1
-            ]
-        )
+        // Text is set in `renderTitle`.
         label.textAlignment = .center
         label.numberOfLines = 0
         return label
@@ -79,7 +70,8 @@ final class SPAlarmsListEmptyState: UIView {
         // Drops the previously banned «снуз» word — copy per
         // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:399` contains "Создайте первый".
         label.text = Localized.text("alarms.empty.body")
-        label.font = AppTypography.bodyLg
+        label.font = AppTypography.scaledBodyLg
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg2
         label.textAlignment = .center
         label.numberOfLines = 0
@@ -100,6 +92,24 @@ final class SPAlarmsListEmptyState: UIView {
         return button
     }()
 
+    /// Scrolls only when the content outgrows the overlay — at accessibility
+    /// sizes the text alone is taller than the list area (#1111). `content`
+    /// is at least the overlay's height, so the column is centred exactly as
+    /// before whenever it fits.
+    private let scrollView: UIScrollView = {
+        let view = UIScrollView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentInsetAdjustmentBehavior = .never
+        view.alwaysBounceVertical = false
+        return view
+    }()
+
+    private let content: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
     // MARK: - Init
 
     override init(frame: CGRect) {
@@ -110,6 +120,26 @@ final class SPAlarmsListEmptyState: UIView {
                 view.refreshDynamicColors()
             }
         }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SPAlarmsListEmptyState, _) in
+            view.renderTitle()
+            view.setNeedsLayout()
+        }
+    }
+
+    /// h2 bold with −0.01em tracking per
+    /// `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:395-396` contains "Ни одного будильника",
+    /// rebuilt at the current content size category so the tracking scales
+    /// with the font (#1111). 24pt at the default category.
+    private func renderTitle() {
+        let font = AppTypography.scaledH2(compatibleWith: traitCollection)
+        titleLabel.attributedText = NSAttributedString(
+            string: Localized.text("alarms.empty.title"),
+            attributes: [
+                .font: font,
+                .kern: AppTypography.kerning(AppTypography.h2Kerning, of: AppTypography.h2, scaledTo: font),
+                .foregroundColor: AppColors.fg1
+            ]
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -132,8 +162,11 @@ final class SPAlarmsListEmptyState: UIView {
 
     private func configure() {
         backgroundColor = .clear
+        renderTitle()
 
-        addSubview(iconHost)
+        addSubview(scrollView)
+        scrollView.addSubview(content)
+        content.addSubview(iconHost)
         iconHost.addSubview(iconView)
         iconHost.layer.borderColor = AppColors.whiteOverlay08.cgColor
 
@@ -144,14 +177,18 @@ final class SPAlarmsListEmptyState: UIView {
         // `docs/design/snoozepay-2026-04-27/project/components/SPMore.jsx:398-399` contains "Создайте первый".
         textStack.spacing = 10
         textStack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(textStack)
-        addSubview(addButton)
+        content.addSubview(textStack)
+        content.addSubview(addButton)
 
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
 
+        pinScrollContent()
         NSLayoutConstraint.activate([
+            iconHost.topAnchor.constraint(greaterThanOrEqualTo: content.topAnchor, constant: AppSpacing.sp5),
+            addButton.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -AppSpacing.sp5),
+
             // Icon centered, 84×84.
-            iconHost.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconHost.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             iconHost.bottomAnchor.constraint(equalTo: textStack.topAnchor, constant: -AppSpacing.sp5),
             iconHost.widthAnchor.constraint(equalToConstant: 84),
             iconHost.heightAnchor.constraint(equalToConstant: 84),
@@ -160,18 +197,43 @@ final class SPAlarmsListEmptyState: UIView {
             iconView.centerYAnchor.constraint(equalTo: iconHost.centerYAnchor),
 
             // Text — centered group, ~280pt max width (`maxWidth: 280`).
-            textStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            textStack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: AppSpacing.sp7),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -AppSpacing.sp7),
-            textStack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            textStack.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            textStack.leadingAnchor.constraint(greaterThanOrEqualTo: content.leadingAnchor, constant: AppSpacing.sp7),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -AppSpacing.sp7),
+            textStack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             textStack.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
 
             // CTA — intrinsic width, centered, 28pt below the text
             // (`marginTop: 28`).
             addButton.topAnchor.constraint(equalTo: textStack.bottomAnchor, constant: AppSpacing.sp7),
-            addButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            addButton.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: AppSpacing.screenInset),
-            addButton.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -AppSpacing.screenInset)
+            addButton.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            addButton.leadingAnchor.constraint(
+                greaterThanOrEqualTo: content.leadingAnchor, constant: AppSpacing.screenInset
+            ),
+            addButton.trailingAnchor.constraint(
+                lessThanOrEqualTo: content.trailingAnchor, constant: -AppSpacing.screenInset
+            )
+        ])
+    }
+
+    /// `content` fills the overlay and grows past it — never shrinks below it,
+    /// so a column that fits is centred in the overlay as before.
+    private func pinScrollContent() {
+        let frame = scrollView.frameLayoutGuide
+        let fitsOverlay = content.heightAnchor.constraint(equalTo: frame.heightAnchor)
+        fitsOverlay.priority = .defaultLow
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            content.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            content.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            content.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            content.widthAnchor.constraint(equalTo: frame.widthAnchor),
+            content.heightAnchor.constraint(greaterThanOrEqualTo: frame.heightAnchor),
+            fitsOverlay
         ])
     }
 

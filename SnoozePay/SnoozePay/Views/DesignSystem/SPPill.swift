@@ -26,6 +26,11 @@ final class SPPill: UIView {
 
     let tone: Tone
 
+    /// Opt-in Dynamic Type, off by default — see `scalesWithContentSize()`.
+    private var scalesText = false
+    private var text = ""
+    private lazy var fixedHeight = heightAnchor.constraint(equalToConstant: 26)
+
     // MARK: - Init
 
     /// - Parameters:
@@ -91,7 +96,7 @@ final class SPPill: UIView {
         addSubview(stack)
 
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 26),
+            fixedHeight,
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -106,18 +111,49 @@ final class SPPill: UIView {
     /// a long-lived pill instance (e.g. the progressive-snooze indicator on
     /// the firing screen counts up «1-е откладывание» → «2-е откладывание» → ...).
     func setText(_ text: String) {
+        self.text = text
         // `.sp-pill` uses the bold 12pt caps font with the default caps
         // tracking (`.12em` per `tokens.css` `--sp-t-caps` / `.sp-caps`) and
         // *no* `text-transform`, so the caller's mixed-case string is kept
         // verbatim.
+        let font = scalesText ? AppTypography.scaledCaps(compatibleWith: traitCollection) : AppTypography.caps
         let attributed = NSAttributedString(
             string: text,
             attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning
+                .font: font,
+                .kern: AppTypography.kerning(AppTypography.capsKerning, of: AppTypography.caps, scaledTo: font)
             ]
         )
         label.attributedText = attributed
+    }
+
+    /// Dynamic Type for this instance only (#1111): the caps text follows the
+    /// content size category, wraps instead of truncating, and the 26pt height
+    /// becomes a floor. At the default category the pill is unchanged — the
+    /// 16.7pt label plus 4pt insets still fits 26pt. Every other pill keeps the
+    /// fixed recipe until the design-system controls get their own slice.
+    /// Covers `setText`; the two-tier `setBalance` stays fixed.
+    func scalesWithContentSize() {
+        guard !scalesText else { return }
+        scalesText = true
+        label.numberOfLines = 0
+        // The required 26pt is swapped (a required constraint cannot be
+        // relaxed in place) for one below the label's vertical compression
+        // resistance, so a grown label stretches the pill instead of being
+        // squeezed into 26pt.
+        fixedHeight.isActive = false
+        let preferred = heightAnchor.constraint(equalToConstant: 26)
+        preferred.priority = .defaultLow
+        NSLayoutConstraint.activate([
+            preferred,
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 26),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 4),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -4)
+        ])
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (pill: SPPill, _) in
+            pill.setText(pill.text)
+        }
+        setText(text)
     }
 
     /// Two-tier balance variant — a muted caps label segment («Баланс») next

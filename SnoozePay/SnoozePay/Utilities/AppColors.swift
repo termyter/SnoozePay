@@ -718,6 +718,26 @@ enum AppTypography {
     static func scaledCaps(compatibleWith traits: UITraitCollection? = nil) -> UIFont {
         scaled(caps, as: .caption1, compatibleWith: traits)
     }
+    /// `h1`, scaled as `.largeTitle` — the system's largest style (34pt).
+    static func scaledH1(compatibleWith traits: UITraitCollection? = nil) -> UIFont {
+        scaled(h1, as: .largeTitle, compatibleWith: traits)
+    }
+    /// `h2`, scaled as `.title2` (22pt).
+    static func scaledH2(compatibleWith traits: UITraitCollection? = nil) -> UIFont {
+        scaled(h2, as: .title2, compatibleWith: traits)
+    }
+    /// `clockLg` with tabular digits, scaled as `.largeTitle`: the flattest
+    /// curve, because 64pt digits are already the largest text on the list.
+    static func scaledClockLg(compatibleWith traits: UITraitCollection? = nil) -> UIFont {
+        scaled(clockLg, as: .largeTitle, compatibleWith: traits).monospacedDigit()
+    }
+
+    /// `kerning` (tuned for `base`) re-proportioned to the size `font` scaled to,
+    /// so em-tracking stays constant. Returned untouched at the base size, so
+    /// the default category gets today's value bit for bit.
+    static func kerning(_ kerning: CGFloat, of base: UIFont, scaledTo font: UIFont) -> CGFloat {
+        font.pointSize == base.pointSize ? kerning : kerning * font.pointSize / base.pointSize
+    }
 
     // MARK: - Legacy section header
     //

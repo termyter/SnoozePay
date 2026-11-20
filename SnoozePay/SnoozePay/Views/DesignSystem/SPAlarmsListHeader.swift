@@ -115,20 +115,12 @@ final class SPAlarmsListHeader: UIView {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         // h1 32pt extrabold with -0.02em kerning per `tokens.css` L80.
+        // Text is set in `renderText`. One word, so it cannot wrap: at the
+        // largest sizes it shrinks to fit beside the buttons, never "…".
         label.font = AppTypography.h1
         label.textColor = AppColors.fg1
-        label.attributedText = NSAttributedString(
-            string: Localized.text("alarms.title"),
-            attributes: [
-                .font: AppTypography.h1,
-                // Full `letterSpacing: -.02em` per
-                // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:296` contains "Будильники</div>"
-                // — the earlier value was halved (#280). `kern(em:size:)`
-                // resolves the em tracking to points for the 32pt h1.
-                .kern: AppTypography.kern(em: -0.02, size: 32),
-                .foregroundColor: AppColors.fg1
-            ]
-        )
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
         return label
     }()
 
@@ -260,14 +252,7 @@ final class SPAlarmsListHeader: UIView {
     private let balanceCapsLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.attributedText = NSAttributedString(
-            string: Localized.text("common.caps.balance"),
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: AppColors.fg3
-            ]
-        )
+        label.numberOfLines = 0
         return label
     }()
 
@@ -297,7 +282,8 @@ final class SPAlarmsListHeader: UIView {
     private let balanceHintLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = AppTypography.meta
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = AppColors.fg3
         label.numberOfLines = 1
         label.adjustsFontSizeToFitWidth = true
@@ -329,6 +315,12 @@ final class SPAlarmsListHeader: UIView {
     /// would flash "0 ₽" on construction.
     private var hasBalance = false
 
+    /// The amount sits after «БАЛАНС» on one baseline by default, and on its
+    /// own line below it at accessibility sizes, where the row cannot fit
+    /// beside the top-up button (#1111).
+    private var valueBesideCaps: [NSLayoutConstraint] = []
+    private var valueBelowCaps: [NSLayoutConstraint] = []
+
     // MARK: - Init
 
     override init(frame: CGRect) {
@@ -338,6 +330,9 @@ final class SPAlarmsListHeader: UIView {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPAlarmsListHeader, _) in
                 view.refreshDynamicColors()
             }
+        }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SPAlarmsListHeader, _) in
+            view.renderText()
         }
     }
 
@@ -498,11 +493,11 @@ final class SPAlarmsListHeader: UIView {
             ),
             balanceCapsLabel.topAnchor.constraint(equalTo: pillButton.topAnchor, constant: AppSpacing.sp3),
 
-            balanceValueLabel.leadingAnchor.constraint(
-                equalTo: balanceCapsLabel.trailingAnchor,
-                constant: AppSpacing.sp2
+            balanceCapsLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: topUpButton.leadingAnchor,
+                constant: -AppSpacing.sp3
             ),
-            balanceValueLabel.firstBaselineAnchor.constraint(equalTo: balanceCapsLabel.firstBaselineAnchor),
+
             balanceValueLabel.trailingAnchor.constraint(
                 lessThanOrEqualTo: topUpButton.leadingAnchor,
                 constant: -AppSpacing.sp3
@@ -530,8 +525,65 @@ final class SPAlarmsListHeader: UIView {
             bottomHairline.heightAnchor.constraint(equalToConstant: 1)
         ])
 
+        valueBesideCaps = [
+            balanceValueLabel.leadingAnchor.constraint(
+                equalTo: balanceCapsLabel.trailingAnchor,
+                constant: AppSpacing.sp2
+            ),
+            balanceValueLabel.firstBaselineAnchor.constraint(equalTo: balanceCapsLabel.firstBaselineAnchor)
+        ]
+        valueBelowCaps = [
+            balanceValueLabel.leadingAnchor.constraint(equalTo: balanceCapsLabel.leadingAnchor),
+            balanceValueLabel.topAnchor.constraint(
+                equalTo: balanceCapsLabel.bottomAnchor,
+                constant: AppSpacing.sp1 / 2
+            )
+        ]
+
         refreshChrome()
-        applyTone(.normal)
+        renderText()
+    }
+
+    /// Re-render the hand-built attributed labels at the current content size
+    /// category and pick the balance row's arrangement. Every role is its
+    /// fixed font at the default category, so the header is unchanged there.
+    private func renderText() {
+        let traits = traitCollection
+        let titleFont = AppTypography.scaledH1(compatibleWith: traits)
+        titleLabel.attributedText = NSAttributedString(
+            string: Localized.text("alarms.title"),
+            attributes: [
+                .font: titleFont,
+                // Full `letterSpacing: -.02em` per
+                // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:296` contains "Будильники</div>"
+                // — the earlier value was halved (#280). `kern(em:size:)`
+                // resolves the em tracking to points for the h1 size.
+                .kern: AppTypography.kern(em: -0.02, size: titleFont.pointSize),
+                .foregroundColor: AppColors.fg1
+            ]
+        )
+        let capsFont = AppTypography.scaledCaps(compatibleWith: traits)
+        balanceCapsLabel.attributedText = NSAttributedString(
+            string: Localized.text("common.caps.balance"),
+            attributes: [
+                .font: capsFont,
+                .kern: AppTypography.kerning(
+                    AppTypography.capsKerning, of: AppTypography.caps, scaledTo: capsFont
+                ),
+                .foregroundColor: AppColors.fg3
+            ]
+        )
+        let accessible = traits.preferredContentSizeCategory.isAccessibilityCategory
+        NSLayoutConstraint.deactivate(accessible ? valueBesideCaps : valueBelowCaps)
+        NSLayoutConstraint.activate(accessible ? valueBelowCaps : valueBesideCaps)
+        balanceHintLabel.numberOfLines = accessible ? 0 : 1
+        // Before the first `setBalance` there is no amount to tone by.
+        applyTone(hasBalance ? Self.tone(for: currentBalance, isLow: currentIsLow) : pillTone)
+    }
+
+    /// The 14pt amount, scaled as `.subheadline` (15pt) and capped at 2×.
+    private var scaledPillValueFont: UIFont {
+        AppTypography.scaled(Self.pillValueFont, as: .subheadline, compatibleWith: traitCollection)
     }
 
     /// Switch the pill chrome between the neutral (bg2 + whiteOverlay08
@@ -588,7 +640,7 @@ final class SPAlarmsListHeader: UIView {
             balanceValueLabel.attributedText = MoneyFormatter.attributed(
                 currentBalance,
                 currency: currentCurrency,
-                digitsFont: Self.pillValueFont,
+                digitsFont: scaledPillValueFont,
                 // The 0 ₽ amount sits on the same wash as the hint, so it
                 // takes the same ink; other tones keep the label's `fg1`.
                 color: tone == .zero ? AppColors.fgOnPainWash : nil

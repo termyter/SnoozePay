@@ -112,6 +112,18 @@ final class AlarmCell: UITableViewCell {
     /// re-calling `configure`.
     private var isEnabledTone = true
 
+    /// Raw strings behind the two hand-built attributed labels, so a content
+    /// size change can re-render them at the new size (#1111).
+    private var timeText = ""
+    private var capsText = ""
+
+    /// Pins the switch to the middle of the first caps line; follows the caps
+    /// line height as it scales.
+    private var toggleCenterY: NSLayoutConstraint!
+    /// Accessibility categories only: the grown clock spans the card, so it
+    /// drops below the switch rather than running under it.
+    private var clockBelowToggle: NSLayoutConstraint!
+
     // MARK: - Callbacks
 
     /// Invoked when the user flips the toggle. Set by the controller in `cellForRowAt`.
@@ -127,6 +139,9 @@ final class AlarmCell: UITableViewCell {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (cell: AlarmCell, _) in
                 cell.refreshDynamicColors()
             }
+        }
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (cell: AlarmCell, _) in
+            cell.renderText()
         }
     }
 
@@ -168,6 +183,17 @@ final class AlarmCell: UITableViewCell {
         let outerH = AppSpacing.screenInset
         let outerV: CGFloat = 6
 
+        toggleCenterY = toggleSwitch.centerYAnchor.constraint(
+            equalTo: cardView.topAnchor,
+            constant: pad + AppTypography.caps.lineHeight / 2
+        )
+        clockBelowToggle = clockLabel.topAnchor.constraint(
+            greaterThanOrEqualTo: toggleSwitch.bottomAnchor, constant: AppSpacing.sp1
+        )
+        // 999, not required: at accessibility sizes it yields to `clockBelowToggle`.
+        let clockTop = clockLabel.topAnchor.constraint(equalTo: capsLabel.bottomAnchor, constant: 4)
+        clockTop.priority = UILayoutPriority(999)
+
         NSLayoutConstraint.activate([
             cardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: outerV),
             cardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: outerH),
@@ -189,14 +215,13 @@ final class AlarmCell: UITableViewCell {
             // sits where a single-line caps row's centre would be) so a
             // wrapped title doesn't drag the toggle down the card —
             // mirrors the demo's `alignItems: flex-start`.
-            toggleSwitch.centerYAnchor.constraint(
-                equalTo: cardView.topAnchor,
-                constant: pad + AppTypography.caps.lineHeight / 2
-            ),
+            toggleCenterY,
             toggleSwitch.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -pad),
 
-            // Clock below the caps row.
-            clockLabel.topAnchor.constraint(equalTo: capsLabel.bottomAnchor, constant: 4),
+            // Clock below the caps row — 4pt, or lower when the switch needs
+            // the room (accessibility sizes only, see `clockBelowToggle`).
+            clockTop,
+            clockLabel.topAnchor.constraint(greaterThanOrEqualTo: capsLabel.bottomAnchor, constant: 4),
             clockLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: pad),
             clockLabel.trailingAnchor.constraint(lessThanOrEqualTo: cardView.trailingAnchor, constant: -pad),
 
@@ -266,31 +291,15 @@ final class AlarmCell: UITableViewCell {
         soundName: String?,
         enabled: Bool
     ) {
-        // −0.04em clock tracking per
-        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:361` contains "-.04em".
-        // The colour is applied separately by `applyEnabledTone`, so omit
-        // `.foregroundColor` here and let the label's `textColor` win.
-        clockLabel.attributedText = NSAttributedString(
-            string: time,
-            attributes: [
-                .font: clockLabel.font as Any,
-                .kern: AppTypography.clockLgKerning
-            ]
-        )
-        capsLabel.attributedText = NSAttributedString(
-            string: daysCaps,
-            attributes: [
-                .font: AppTypography.caps,
-                .kern: AppTypography.capsKerning,
-                .foregroundColor: enabled ? AppColors.fg3 : AppColors.fg4
-            ]
-        )
+        timeText = time
+        capsText = daysCaps
         toggleSwitch.isOn = enabled
         applyEnabledTone(enabled)
         rebuildPills(
             price: priceText, currency: priceCurrency,
             multiplier: multiplier, soundName: soundName, enabled: enabled
         )
+        renderText()
 
         // Compose the VoiceOver summary from the same fields.
         //
@@ -416,11 +425,58 @@ final class AlarmCell: UITableViewCell {
             )
             pillsStack.addArrangedSubview(sound)
         }
+        pillsStack.arrangedSubviews.compactMap { $0 as? SPPill }.forEach { $0.scalesWithContentSize() }
         // Trailing spacer so pills don't stretch.
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         pillsStack.addArrangedSubview(spacer)
+    }
+
+    /// Render the clock and caps rows at the cell's content size category and
+    /// pick the arrangement for it. Both fonts are the fixed roles at the
+    /// default category, so the card is unchanged there (#1111).
+    private func renderText() {
+        let traits = traitCollection
+        // −0.04em clock tracking per
+        // `docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:361` contains "-.04em".
+        // The colour is applied separately by `applyEnabledTone`, so omit
+        // `.foregroundColor` here and let the label's `textColor` win.
+        let clockFont = AppTypography.scaledClockLg(compatibleWith: traits)
+        clockLabel.font = clockFont
+        clockLabel.attributedText = NSAttributedString(
+            string: timeText,
+            attributes: [
+                .font: clockFont,
+                .kern: AppTypography.kerning(
+                    AppTypography.clockLgKerning, of: AppTypography.clockLg, scaledTo: clockFont
+                )
+            ]
+        )
+        let capsFont = AppTypography.scaledCaps(compatibleWith: traits)
+        capsLabel.attributedText = NSAttributedString(
+            string: capsText,
+            attributes: [
+                .font: capsFont,
+                .kern: AppTypography.kerning(
+                    AppTypography.capsKerning, of: AppTypography.caps, scaledTo: capsFont
+                ),
+                .foregroundColor: isEnabledTone ? AppColors.fg3 : AppColors.fg4
+            ]
+        )
+        toggleCenterY.constant = AppSpacing.sp5 + capsFont.lineHeight / 2
+
+        // Accessibility sizes: a time is one unit and never wraps ("07:0|0"),
+        // so one that outgrows the card shrinks to fit — the 0.5 floor holds
+        // "12:45 PM" at the largest size on a 375pt phone. The pills stack
+        // vertically instead of running off the card's edge.
+        let accessible = traits.preferredContentSizeCategory.isAccessibilityCategory
+        clockLabel.minimumScaleFactor = accessible ? 0.5 : 0.7
+        clockBelowToggle.isActive = accessible
+        pillsStack.axis = accessible ? .vertical : .horizontal
+        pillsStack.alignment = accessible ? .leading : .center
+        // The trailing spacer only matters in a row.
+        pillsStack.arrangedSubviews.filter { !($0 is SPPill) }.forEach { $0.isHidden = accessible }
     }
 
     private func applyEnabledTone(_ enabled: Bool) {
@@ -499,17 +555,8 @@ final class AlarmCell: UITableViewCell {
         applyEnabledTone(isOn)
         // No `accessibilityValue` refresh here either — see `configure(...)`:
         // the platform derives the switch's announced value from `isOn`.
-        // Recolour the caps + pill set to track the new tone.
-        if let attributed = capsLabel.attributedText?.string {
-            capsLabel.attributedText = NSAttributedString(
-                string: attributed,
-                attributes: [
-                    .font: AppTypography.caps,
-                    .kern: AppTypography.capsKerning,
-                    .foregroundColor: isOn ? AppColors.fg3 : AppColors.fg4
-                ]
-            )
-        }
+        // Recolour the caps row to track the new tone, at the current size.
+        renderText()
         onToggle?(isOn)
     }
 
