@@ -43,6 +43,14 @@ final class DepositBottomSheetViewController: UIViewController {
     /// Set once a successful purchase resolves — guards double-delivery
     /// (foreground purchase + background `Transaction.updates` listener).
     private var successReceipt: TopUpSuccessReceipt?
+    /// Purchases this sheet dispatched and the user did not cancel (#1190). Only
+    /// these complete here; with none, a completion is another screen's (the firing
+    /// sheet above this one) or a restore's. The pending notice and a failure alert
+    /// end the tap but keep the count: a late approval is still this sheet's.
+    private var ownPurchasesOutstanding = 0
+    /// The alert this sheet presented itself, the only thing its success
+    /// dismissal may close along with it (#1190).
+    private weak var ownAlert: UIAlertController?
 
     private var purchaseCompletedObserver: NSObjectProtocol?
     private var purchaseFailedObserver: NSObjectProtocol?
@@ -451,6 +459,10 @@ final class DepositBottomSheetViewController: UIViewController {
             queue: .main
         ) { [weak self] note in
             guard let self else { return }
+            guard self.ownPurchasesOutstanding > 0 else {
+                AppLogger.emit(.storeKit, .default, "DepositSheet: completion of a purchase it did not start, ignoring")
+                return
+            }
             guard let receipt = TopUpSuccessReceipt(eventAmount: note.userInfo?[amountKey],
                                                     currency: self.balance.walletCurrency) else {
                 AppLogger.storeKit.error("DepositSheet: invalid credited amount event — ignoring")
@@ -471,6 +483,7 @@ final class DepositBottomSheetViewController: UIViewController {
             forName: StoreKitService.purchaseCancelledNotification, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self, self.purchaseInFlight, self.successReceipt == nil else { return }
+            self.ownPurchasesOutstanding = max(0, self.ownPurchasesOutstanding - 1)
             self.endPurchaseInFlight()
         }
         purchasePendingObserver = center.addObserver(
@@ -479,7 +492,8 @@ final class DepositBottomSheetViewController: UIViewController {
     }
 
     /// Ask to Buy / SCA ends this tap (#1183): a decline may never arrive. An
-    /// approval still lands on the completed observer above while the sheet is up.
+    /// approval still lands on the completed observer above while the sheet is
+    /// up: the purchase stays in `ownPurchasesOutstanding`.
     private func handlePurchasePending() {
         guard purchaseInFlight else { return }
         handlePurchaseFailure(message: StoreKitService.purchasePendingMessage, title: nil,
@@ -508,7 +522,7 @@ final class DepositBottomSheetViewController: UIViewController {
             if refusal == .ledgerUnreadable {
                 handlePurchaseFailure(message: message)
             } else {
-                present(ForeignCurrencyNotice.alert(message: message), animated: true)
+                presentOwnAlert(ForeignCurrencyNotice.alert(message: message))
             }
             return
         }
@@ -516,10 +530,12 @@ final class DepositBottomSheetViewController: UIViewController {
         depositButton.isEnabled = false
 
         if let purchaseProduct {
+            ownPurchasesOutstanding += 1
             purchaseProduct(preset.productID)
             return
         }
         if let product = StoreKitService.shared.products.first(where: { $0.id == preset.productID }) {
+            ownPurchasesOutstanding += 1
             Task { @MainActor in
                 await StoreKitService.shared.purchase(product)
             }
@@ -568,12 +584,17 @@ final class DepositBottomSheetViewController: UIViewController {
             self.successContainer.alpha = 1
         }
 
-        // Through the presenter (#1189): `dismiss` on a sheet that still shows
-        // the pending notice or a failure alert closes only that alert.
+        // Through the presenter over this sheet's own alert (#1189), never over
+        // a screen presented above it (#1190).
         scheduleSuccessDismissal(2) { [weak self] in
             guard let self else { return }
-            (self.presentingViewController ?? self).dismiss(animated: true)
+            dismissTopUpSheetAfterSuccess(self, ownAlert: self.ownAlert)
         }
+    }
+
+    private func presentOwnAlert(_ alert: UIAlertController) {
+        ownAlert = alert
+        present(alert, animated: true)
     }
 
     /// Corruption-specific alert shown when the user taps «Пополнить» while
@@ -592,7 +613,7 @@ final class DepositBottomSheetViewController: UIViewController {
             self?.balance.acknowledgeCorruption()
         })
         alert.addAction(UIAlertAction(title: Localized.text("common.button.cancel"), style: .cancel))
-        present(alert, animated: true)
+        presentOwnAlert(alert)
     }
 
     /// `title: nil` is the pending notice, which is not a failure.
@@ -609,6 +630,6 @@ final class DepositBottomSheetViewController: UIViewController {
         )
         if let noticeID { alert.view.accessibilityIdentifier = noticeID }
         alert.addAction(UIAlertAction(title: Localized.text("common.button.ok"), style: .default))
-        present(alert, animated: true)
+        presentOwnAlert(alert)
     }
 }
