@@ -18,7 +18,17 @@ import UIKit
 /// ```
 final class SPPageHeader: UIView {
 
-    private let titleLabel = UILabel()
+    private let title: String
+
+    /// One word: one line. At the largest text sizes it shrinks to fit the
+    /// screen, never below half its size and never "…" (#1111).
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
+        return label
+    }()
 
     private let bottomHairline: UIView = {
         let view = UIView()
@@ -28,9 +38,15 @@ final class SPPageHeader: UIView {
     }()
 
     init(title: String) {
+        self.title = title
         super.init(frame: .zero)
         backgroundColor = AppColors.bg0
-        configure(title: title)
+        configure()
+        renderTitle()
+        // Attributed, so `adjustsFontForContentSizeCategory` cannot regrow it.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: SPPageHeader, _) in
+            view.renderTitle()
+        }
         if #available(iOS 17.0, *) {
             registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: SPPageHeader, _) in
                 // CALayer-backed colours don't auto-resolve on trait change.
@@ -43,21 +59,24 @@ final class SPPageHeader: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    private func configure(title: String) {
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        // h1 32pt extrabold with full -0.02em tracking — same recipe as the
-        // AlarmsList header title
-        // (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:296` contains "Будильники";
-        // tokens.css L80).
+    /// h1 32pt extrabold with full -0.02em tracking — same recipe as the
+    /// AlarmsList header title
+    /// (`docs/design/snoozepay-2026-04-27/project/components/SPScreensV2.jsx:296` contains "Будильники";
+    /// tokens.css L80) — grown on `.largeTitle` at this text size.
+    private func renderTitle() {
+        let font = AppTypography.scaledH1(compatibleWith: traitCollection)
         titleLabel.attributedText = NSAttributedString(
             string: title,
             attributes: [
-                .font: AppTypography.h1,
-                .kern: AppTypography.kern(em: -0.02, size: 32),
+                .font: font,
+                .kern: AppTypography.kern(em: -0.02, size: font.pointSize),
                 .foregroundColor: AppColors.fg1
             ]
         )
+    }
 
+    private func configure() {
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(titleLabel)
         addSubview(bottomHairline)
 

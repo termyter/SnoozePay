@@ -24,8 +24,12 @@ final class StatisticsWeekdayBarsView: UIView {
 
     private static let chartHeight: CGFloat = 132
     private static let columnGap: CGFloat = 8
+    /// The value and caption rows at the default text size. They grow with
+    /// their labels (#1111); the bar area between them keeps its height.
     private static let valueHeight: CGFloat = 14
     private static let captionHeight: CGFloat = 14
+    private static let valueFont = AppFonts.sans(.bold, 12)
+    private static let captionSize: CGFloat = 11
     private static let rowGap: CGFloat = 6
     /// `fileprivate` so the bar itself rounds its gradient to the same radius —
     /// a private member would be invisible to `WeekdayBarView` below.
@@ -48,6 +52,23 @@ final class StatisticsWeekdayBarsView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: StatisticsWeekdayBarsView, _) in
+            view.invalidateIntrinsicContentSize()
+            view.setNeedsLayout()
+        }
+    }
+
+    /// Value and caption row heights in proportion to their fonts at this
+    /// text size — exactly 14 and 14 at the default one.
+    private var labelRowHeights: (value: CGFloat, caption: CGFloat) {
+        let value = AppTypography.scaled(Self.valueFont, as: .caption1, compatibleWith: traitCollection)
+        let caption = AppTypography.scaled(
+            AppFonts.sans(.medium, Self.captionSize), as: .caption2, compatibleWith: traitCollection
+        )
+        return (
+            Self.valueHeight * value.pointSize / Self.valueFont.pointSize,
+            Self.captionHeight * caption.pointSize / Self.captionSize
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -63,8 +84,7 @@ final class StatisticsWeekdayBarsView: UIView {
             $0.captionLabel.removeFromSuperview()
         }
         columns = stats.map { stat in
-            let valueLabel = UILabel()
-            valueLabel.font = AppFonts.sans(.bold, 12)
+            let valueLabel = Self.makeChartLabel(font: Self.valueFont, style: .caption1)
             valueLabel.textAlignment = .center
             valueLabel.text = StatisticsViewModel.barValueText(stat.average)
             // 12pt bold — small text, so the worst day takes the light
@@ -78,8 +98,9 @@ final class StatisticsWeekdayBarsView: UIView {
             bar.apply(isWorst: stat.isWorst, isZero: stat.average == 0)
             addSubview(bar)
 
-            let captionLabel = UILabel()
-            captionLabel.font = AppFonts.sans(stat.isWorst ? .bold : .medium, 11)
+            let captionLabel = Self.makeChartLabel(
+                font: AppFonts.sans(stat.isWorst ? .bold : .medium, Self.captionSize), style: .caption2
+            )
             captionLabel.textAlignment = .center
             captionLabel.text = stat.label
             captionLabel.textColor = stat.isWorst ? AppColors.fg1 : AppColors.fg3
@@ -89,10 +110,23 @@ final class StatisticsWeekdayBarsView: UIView {
         }
     }
 
+    /// A column is ~36pt wide: one line, shrinking rather than "…" when the
+    /// grown text does not fit.
+    private static func makeChartLabel(font: UIFont, style: UIFont.TextStyle) -> UILabel {
+        let label = UILabel()
+        label.font = AppTypography.scaled(font, as: style)
+        label.adjustsFontForContentSizeCategory = true
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
+        return label
+    }
+
     // MARK: - Layout
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: Self.chartHeight)
+        let rows = labelRowHeights
+        let grown = rows.value - Self.valueHeight + rows.caption - Self.captionHeight
+        return CGSize(width: UIView.noIntrinsicMetric, height: Self.chartHeight + grown)
     }
 
     override func layoutSubviews() {
@@ -101,8 +135,9 @@ final class StatisticsWeekdayBarsView: UIView {
         let count = CGFloat(columns.count)
         let columnWidth = (bounds.width - Self.columnGap * (count - 1)) / count
         let maxValue = max(stats.map(\.average).max() ?? 0, 0.001)
-        let barAreaTop = Self.valueHeight + Self.rowGap
-        let barAreaBottom = bounds.height - Self.captionHeight - Self.rowGap
+        let rows = labelRowHeights
+        let barAreaTop = rows.value + Self.rowGap
+        let barAreaBottom = bounds.height - rows.caption - Self.rowGap
         let barAreaHeight = max(0, barAreaBottom - barAreaTop)
 
         for (index, column) in columns.enumerated() {
@@ -123,15 +158,15 @@ final class StatisticsWeekdayBarsView: UIView {
             )
             column.valueLabel.frame = CGRect(
                 x: x,
-                y: column.bar.frame.minY - Self.rowGap - Self.valueHeight,
+                y: column.bar.frame.minY - Self.rowGap - rows.value,
                 width: columnWidth,
-                height: Self.valueHeight
+                height: rows.value
             )
             column.captionLabel.frame = CGRect(
                 x: x,
-                y: bounds.height - Self.captionHeight,
+                y: bounds.height - rows.caption,
                 width: columnWidth,
-                height: Self.captionHeight
+                height: rows.caption
             )
         }
     }

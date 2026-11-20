@@ -46,8 +46,7 @@ extension StatisticsViewController {
         // clean month, and it has a gold the neighbour never mentions (#637).
         // Placement mirrors `SPWeekMoneyCard`, which puts its own legend
         // directly against its chart.
-        let legend = SPSupport.makeMetaLabel(Localized.text("statistics.streak.legend"))
-        legend.numberOfLines = 0
+        let legend = makeMetaLabel(Localized.text("statistics.streak.legend"))
         let outer = UIStackView(arrangedSubviews: [topRow, heatmapView, legend])
         outer.axis = .vertical
         outer.spacing = AppSpacing.sp5
@@ -74,6 +73,7 @@ extension StatisticsViewController {
             Localized.text("statistics.streak.caps"),
             color: StatisticsAccentTones.warn
         )
+        caps.numberOfLines = 1
         let numberRow = UIStackView(arrangedSubviews: [streakBigLabel, streakBigWordLabel])
         numberRow.axis = .horizontal
         numberRow.alignment = .firstBaseline
@@ -83,7 +83,11 @@ extension StatisticsViewController {
         let textStack = UIStackView(arrangedSubviews: [caps, numberRow, streakMetaLabel])
         textStack.axis = .vertical
         textStack.spacing = AppSpacing.sp1
-        textStack.alignment = .leading
+        // `.fill`, not `.leading` (#1111): the meta line wraps at large text
+        // sizes, and a wrapping label needs its width from the stack, not from
+        // its own one-line size (the #631 trap). The text is left-aligned, so
+        // it draws where it did at `.leading`.
+        textStack.alignment = .fill
         textStack.setCustomSpacing(AppSpacing.sp2, after: numberRow)
         textStack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -182,10 +186,15 @@ extension StatisticsViewController {
 
         let header = UIStackView(arrangedSubviews: [caps, weekdayHeadlineLabel, meta])
         header.axis = .vertical
-        header.alignment = .leading
+        // `.fill` for the wrapping headline, as in the hero's text column.
+        header.alignment = .fill
         header.spacing = AppSpacing.sp1
         header.setCustomSpacing(AppSpacing.sp2, after: caps)
         header.translatesAutoresizingMaskIntoConstraints = false
+        let sizes: [UITrait] = [UITraitPreferredContentSizeCategory.self]
+        weekdayHeadlineLabel.registerForTraitChanges(sizes) { [weak self] (_: UILabel, _) in
+            self?.renderWeekdayHeadline()
+        }
 
         let stack = UIStackView(arrangedSubviews: [header, weekdayBarsView])
         stack.axis = .vertical
@@ -226,6 +235,8 @@ extension StatisticsViewController {
         leftColumn.translatesAutoresizingMaskIntoConstraints = false
 
         let weekCaption = makeMetaLabel(Localized.text("statistics.trend.week_caption"))
+        // One line, as before: the headline is the side that gives way (#519).
+        weekCaption.numberOfLines = 1
         weekCaption.textAlignment = .right
         let rightColumn = UIStackView(arrangedSubviews: [weekCaption, trendWeekValueLabel])
         rightColumn.axis = .vertical
@@ -234,20 +245,21 @@ extension StatisticsViewController {
         rightColumn.translatesAutoresizingMaskIntoConstraints = false
 
         let summaryRow = UIStackView(arrangedSubviews: [leftColumn, rightColumn])
-        summaryRow.axis = .horizontal
-        summaryRow.alignment = .top
-        summaryRow.distribution = .equalSpacing
         summaryRow.spacing = AppSpacing.sp3
         summaryRow.translatesAutoresizingMaskIntoConstraints = false
+        arrangeWithTextSize(trendSummary: summaryRow)
 
         let axisLeft = makeMetaLabel(Localized.text("statistics.trend.axis_start"))
         let axisRight = makeMetaLabel(Localized.text("statistics.trend.axis_end"))
-        axisRight.font = AppFonts.sans(.semibold, 13)
+        axisRight.font = AppTypography.scaled(AppFonts.sans(.semibold, 13), as: .footnote)
         axisRight.textColor = AppColors.fg1
         axisRight.textAlignment = .right
         let axisRow = UIStackView(arrangedSubviews: [axisLeft, axisRight])
         axisRow.axis = .horizontal
         axisRow.distribution = .fillEqually
+        // Top, not fill: when one end wraps at a large size, the other keeps
+        // its line at the top instead of floating in the middle.
+        axisRow.alignment = .top
         axisRow.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = UIStackView(arrangedSubviews: [caps, summaryRow, trendBarsView, axisRow])
@@ -267,18 +279,74 @@ extension StatisticsViewController {
         return card
     }
 
-    // MARK: - Shared label constructors
-
-    /// Thin forwarders onto the design-system constructors. The recipes moved
-    /// into `SPSupport` once #348 added two more cards that needed byte-identical
-    /// copies of them; these stay so the call sites below keep reading as
-    /// `makeCapsLabel(…)` rather than a fully-qualified mouthful.
-    private func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
-        SPSupport.makeCapsLabel(text, color: color)
+    /// Below XL, today's row: the headline column on the left, «Эта неделя»
+    /// right-aligned opposite it and above the subtitle's 750, so the headline
+    /// column wraps (#519; on the tie a cold open cut it to «Эт…»). From XL
+    /// (`AppTypography.stacksDenseRows`) it drops under the headline, aligned
+    /// left: beside it, a grown headline has less room than its longest word.
+    ///
+    /// The wrapping labels keep the width of their last layout
+    /// (`SPWrappingLabel`), so a live change re-measures them from no width,
+    /// as a cold start does; otherwise a grown headline breaks mid-word in
+    /// today's 141pt. Not on the move into the window: nothing is measured yet.
+    private func arrangeWithTextSize(trendSummary row: UIStackView) {
+        let labels = [trendHeadlineLabel, trendSubtitleLabel]
+        let weekColumn = row.arrangedSubviews.last as? UIStackView
+        let weekLabels = weekColumn?.arrangedSubviews.compactMap { $0 as? UILabel } ?? []
+        weekLabels.forEach { $0.setContentCompressionResistancePriority(UILayoutPriority(751), for: .horizontal) }
+        let arrange = { (row: UIStackView, remeasure: Bool) in
+            let stacked = AppTypography.stacksDenseRows(row.traitCollection.preferredContentSizeCategory)
+            row.axis = stacked ? .vertical : .horizontal
+            row.alignment = stacked ? .fill : .top
+            row.distribution = stacked ? .fill : .equalSpacing
+            weekColumn?.alignment = stacked ? .leading : .trailing
+            weekLabels.forEach { $0.textAlignment = stacked ? .natural : .right }
+            guard remeasure else { return }
+            for label in labels {
+                label.preferredMaxLayoutWidth = 0
+                label.frame.size.width = 0
+                label.invalidateIntrinsicContentSize()
+            }
+        }
+        arrange(row, false)
+        row.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (row: UIStackView, previous) in
+            arrange(row, previous.preferredContentSizeCategory != .unspecified)
+        }
     }
 
+    // MARK: - Shared label constructors
+
+    /// The design-system recipes (`SPSupport`, #348) at the content size
+    /// category (#1111). Every role is its fixed font at the default size.
+    ///
+    /// The caps text is attributed, so it is rebuilt — scaled `caps` with its
+    /// +0.12em tracking re-proportioned — when the category changes. It may
+    /// wrap: «ДИНАМИКА ОТКЛАДЫВАНИЙ» outgrows the card at the largest sizes.
+    private func makeCapsLabel(_ text: String, color: UIColor) -> UILabel {
+        let label = SPSupport.makeCapsLabel(text, color: color)
+        label.numberOfLines = 0
+        let render = { (label: UILabel) in
+            let font = AppTypography.scaledCaps(compatibleWith: label.traitCollection)
+            label.attributedText = NSAttributedString(string: text, attributes: [
+                .font: font,
+                .kern: AppTypography.kerning(AppTypography.capsKerning, of: AppTypography.caps, scaledTo: font),
+                .foregroundColor: color
+            ])
+        }
+        render(label)
+        label.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (label: UILabel, _) in
+            render(label)
+        }
+        return label
+    }
+
+    /// Meta captions wrap rather than truncate once they grow.
     private func makeMetaLabel(_ text: String) -> UILabel {
-        SPSupport.makeMetaLabel(text)
+        let label = SPSupport.makeMetaLabel(text)
+        label.font = AppTypography.scaledMeta
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
+        return label
     }
 
     // MARK: - Debug
